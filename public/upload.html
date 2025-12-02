@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Piggy Habit | Upload Proof</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="app-shell">
+    <main class="page">
+        <header class="between flex">
+            <div>
+                <div class="muted">Verification</div>
+                <div style="font-weight:800; font-size:22px;">Upload proof</div>
+            </div>
+            <button class="btn btn-outline btn-small" onclick="window.location.href='room.html'">Back</button>
+        </header>
+
+        <section class="card stack mt-24">
+            <div class="muted" id="taskTitle">Selected task</div>
+            <label class="btn btn-primary" style="text-align:center; cursor:pointer; width:100%;">
+                <input type="file" accept="image/*" capture="environment" id="fileInput" style="display:none;">
+                Take/Choose Photo
+            </label>
+            <div id="previewWrap" class="stack" style="display:none;">
+                <div class="muted">Preview</div>
+                <img id="previewImg" alt="Preview" style="width:100%; border-radius: var(--radius-lg); border:1px solid var(--border);">
+                <button class="btn btn-primary" id="nextBtn">Next</button>
+            </div>
+        </section>
+    </main>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="js/app.js"></script>
+    <script>
+        app.requireUser();
+        const proof = JSON.parse(localStorage.getItem('piggy-habit-proof') || '{}');
+        const fileInput = document.getElementById('fileInput');
+        const previewWrap = document.getElementById('previewWrap');
+        const previewImg = document.getElementById('previewImg');
+        const taskTitle = document.getElementById('taskTitle');
+        const nextBtn = document.getElementById('nextBtn');
+
+        taskTitle.textContent = proof.task ? `${proof.task.label || 'Task'} · ${proof.task.desc || ''}` : 'Selected task';
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                previewImg.src = ev.target.result;
+                previewWrap.style.display = 'flex';
+                localStorage.setItem('piggy-habit-proof-img', ev.target.result);
+            };
+            reader.readAsDataURL(file);
+        });
+
+        nextBtn.addEventListener('click', () => {
+            if (!previewImg.src) {
+                app.showToast('Please attach a photo.');
+                return;
+            }
+            window.location.href = 'verify.html';
+        });
+    </script>
+</body>
+</html>

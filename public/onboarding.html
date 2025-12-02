@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Piggy Habit | Pledge</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="app-shell">
+    <main class="page">
+        <header class="between flex">
+            <div>
+                <div class="muted" id="roomTitle">Entry Pledge 📝</div>
+                <div style="font-weight: 800; font-size: 22px;">Claim your color and commit</div>
+            </div>
+            <button class="btn btn-outline btn-small" onclick="window.location.href='create.html'">Back</button>
+        </header>
+
+        <!-- Section 1: Color Picker -->
+        <section class="card stack mt-24">
+            <div class="input-group">
+                <label>Reserve your LED color</label>
+                <div class="grid-colors" id="colorGrid"></div>
+            </div>
+        </section>
+
+        <!-- Section 2: Goal Setting -->
+        <section class="card stack mt-16" id="routineSection" style="display:none;">
+            <div style="color: var(--accent); font-weight:700;">Once set, you cannot edit. Choose carefully.</div>
+            <div class="input-group">
+                <label for="minInput">Min (2 pts)</label>
+                <input id="minInput" type="text" placeholder="At least this... e.g. Drink water">
+            </div>
+            <div class="input-group">
+                <label for="moreInput">More (5 pts)</label>
+                <input id="moreInput" type="text" placeholder="Typical routine... e.g. Take supplements">
+            </div>
+            <div class="input-group">
+                <label for="maxInput">Max (10 pts)</label>
+                <input id="maxInput" type="text" placeholder="Perfect day! e.g. 30m run">
+            </div>
+        </section>
+
+        <section class="card stack mt-16" id="onedaySection" style="display:none;">
+            <div style="color: var(--accent); font-weight:700;">Register every task for today. No edits later.</div>
+            <div class="input-group">
+                <label for="todoInput">Task</label>
+                <input id="todoInput" type="text" placeholder="e.g. Memorize 50 vocab words">
+            </div>
+            <div class="chips" id="timeChips">
+                <div class="chip active" data-min="10">10m</div>
+                <div class="chip" data-min="30">30m</div>
+                <div class="chip" data-min="60">1h</div>
+                <div class="chip" data-min="0" id="customChip">Custom</div>
+            </div>
+            <button class="btn btn-outline btn-small" id="addTodoBtn" style="width:auto;">+ Add</button>
+            <div class="list" id="todoList"></div>
+            <div class="between flex">
+                <span class="muted">Total estimated time</span>
+                <strong id="totalTime">0 min</strong>
+            </div>
+        </section>
+
+        <!-- Section 3: Money Pledge -->
+        <section class="card stack mt-16">
+            <label class="pill" style="cursor:pointer;">
+                <input type="checkbox" id="moneyCheck" style="margin-right:10px; width:18px; height:18px;">
+                I deposited the entry pledge into the piggy bank.
+            </label>
+        </section>
+
+        <button id="finishBtn" class="btn btn-primary mt-16" disabled>Sign and Enter 🚀</button>
+    </main>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="js/app.js"></script>
+    <script>
+        const user = app.requireUser();
+        const draft = JSON.parse(localStorage.getItem('piggy-habit-draft') || '{}');
+        const urlType = new URLSearchParams(window.location.search).get('type');
+        const mode = urlType || draft.mode || 'routine';
+        const roomName = draft.name || draft.roomName || 'Your room';
+        const roomTitle = document.getElementById('roomTitle');
+        roomTitle.textContent = `${roomName} Entry Pledge 📝`;
+
+        const colorGrid = document.getElementById('colorGrid');
+        const routineSection = document.getElementById('routineSection');
+        const onedaySection = document.getElementById('onedaySection');
+        const moneyCheck = document.getElementById('moneyCheck');
+        const finishBtn = document.getElementById('finishBtn');
+
+        const routineInputs = {
+            min: document.getElementById('minInput'),
+            more: document.getElementById('moreInput'),
+            max: document.getElementById('maxInput'),
+        };
+
+        const todoInput = document.getElementById('todoInput');
+        const addTodoBtn = document.getElementById('addTodoBtn');
+        const todoListEl = document.getElementById('todoList');
+        const totalTimeEl = document.getElementById('totalTime');
+        const timeChips = document.querySelectorAll('#timeChips .chip');
+        const customChip = document.getElementById('customChip');
+
+        const roomData = JSON.parse(localStorage.getItem('piggy-habit-room') || '{}');
+        const takenColors = roomData.takenColors || [];
+
+        const colors = ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#007AFF', '#AF52DE', '#FFFFFF'];
+        let selectedColor = null;
+        let todos = [];
+        let selectedMinutes = 10;
+
+        const renderColors = () => {
+            colorGrid.innerHTML = '';
+            colors.forEach(color => {
+                const swatch = document.createElement('div');
+                swatch.className = 'color-swatch';
+                swatch.style.background = color;
+                const isTaken = takenColors.includes(color);
+                if (color === selectedColor) swatch.classList.add('active');
+                if (isTaken) {
+                    swatch.classList.add('taken');
+                    const icon = document.createElement('div');
+                    icon.className = 'swatch-icon';
+                    icon.textContent = '❌';
+                    swatch.appendChild(icon);
+                } else {
+                    swatch.addEventListener('click', () => {
+                        selectedColor = color;
+                        renderColors();
+                        validate();
+                    });
+                }
+                colorGrid.appendChild(swatch);
+            });
+        };
+
+        const setActiveChip = (chip) => {
+            timeChips.forEach(c => c.classList.toggle('active', c === chip));
+        };
+
+        timeChips.forEach(chip => {
+            chip.addEventListener('click', () => {
+                const min = Number(chip.dataset.min);
+                if (min === 0) {
+                    const custom = prompt('Enter minutes');
+                    const parsed = Number(custom);
+                    if (!parsed || parsed <= 0) {
+                        app.showToast('Enter a positive number.');
+                        return;
+                    }
+                    selectedMinutes = parsed;
+                } else {
+                    selectedMinutes = min;
+                }
+                setActiveChip(chip);
+            });
+        });
+
+        const renderTodos = () => {
+            todoListEl.innerHTML = '';
+            let total = 0;
+            todos.forEach((item, idx) => {
+                total += item.minutes;
+                const row = document.createElement('div');
+                row.className = 'list-item';
+                row.innerHTML = `
+                    <div style="font-weight:700;">${item.text}</div>
+                    <div class="muted">⏱️ ${item.minutes} min</div>
+                    <button class="btn btn-outline btn-small" type="button">🗑️</button>
+                `;
+                row.querySelector('button').addEventListener('click', () => {
+                    todos.splice(idx, 1);
+                    renderTodos();
+                });
+                todoListEl.appendChild(row);
+            });
+            totalTimeEl.textContent = formatTime(total);
+            validate();
+        };
+
+        addTodoBtn.addEventListener('click', () => {
+            const text = todoInput.value.trim();
+            if (!text) {
+                app.showToast('Add a to-do item.');
+                todoInput.focus();
+                return;
+            }
+            todos.push({ text, minutes: selectedMinutes });
+            todoInput.value = '';
+            renderTodos();
+        });
+
+        const formatTime = (minutes) => {
+            const h = Math.floor(minutes / 60);
+            const m = minutes % 60;
+            if (!h) return `${m} min`;
+            if (!m) return `${h} hr`;
+            return `${h} hr ${m} min`;
+        };
+
+        const validate = () => {
+            let ok = !!selectedColor && moneyCheck.checked;
+            if (mode === 'routine') {
+                ok = ok && routineInputs.min.value.trim() && routineInputs.more.value.trim() && routineInputs.max.value.trim();
+            } else {
+                ok = ok && todos.length > 0;
+            }
+            finishBtn.disabled = !ok;
+        };
+
+        renderColors();
+
+        if (mode === 'routine') {
+            routineSection.style.display = 'block';
+        } else {
+            onedaySection.style.display = 'block';
+        }
+
+        Object.values(routineInputs).forEach(input => input.addEventListener('input', validate));
+        moneyCheck.addEventListener('change', validate);
+
+        finishBtn.addEventListener('click', () => {
+            if (!selectedColor) {
+                app.showToast('Select a color.');
+                return;
+            }
+            if (!moneyCheck.checked) {
+                app.showToast('Please confirm the money pledge.');
+                return;
+            }
+
+            if (mode === 'routine') {
+                if (!routineInputs.min.value.trim() || !routineInputs.more.value.trim() || !routineInputs.max.value.trim()) {
+                    app.showToast('Fill in all three goals.');
+                    return;
+                }
+            } else {
+                if (todos.length === 0) {
+                    app.showToast('Add at least one task.');
+                    return;
+                }
+            }
+
+            const payload = {
+                ...draft,
+                mode,
+                color: selectedColor,
+                takenColors,
+                moneyPledge: true,
+                goals: mode === 'routine'
+                    ? {
+                        min: routineInputs.min.value.trim(),
+                        more: routineInputs.more.value.trim(),
+                        max: routineInputs.max.value.trim(),
+                    }
+                    : todos,
+                isPaid: true,
+                nickname: user.nickname,
+            };
+
+            localStorage.setItem('piggy-habit-room', JSON.stringify(payload));
+            app.showToast('Pledge saved. Entering room...');
+            setTimeout(() => window.location.href = 'room.html', 500);
+        });
+
+        validate();
+    </script>
+</body>
+</html>

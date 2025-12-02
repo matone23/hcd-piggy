@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Piggy Habit | Verify</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="app-shell">
+    <main class="page">
+        <header class="between flex">
+            <div>
+                <div class="muted">Verification</div>
+                <div style="font-weight:800; font-size:22px;">Confirm submission</div>
+            </div>
+            <button class="btn btn-outline btn-small" onclick="window.location.href='upload.html'">Back</button>
+        </header>
+
+        <section class="card stack mt-24">
+            <div class="muted" id="taskLabel">Task</div>
+            <img id="previewImg" alt="Proof" style="width:100%; border-radius: var(--radius-lg); border:1px solid var(--border);">
+            <button class="btn btn-primary" id="submitBtn">Submit Proof</button>
+        </section>
+    </main>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="js/app.js"></script>
+    <script>
+        app.requireUser();
+        const proof = JSON.parse(localStorage.getItem('piggy-habit-proof') || '{}');
+        const imgData = localStorage.getItem('piggy-habit-proof-img');
+        const previewImg = document.getElementById('previewImg');
+        const taskLabel = document.getElementById('taskLabel');
+        const submitBtn = document.getElementById('submitBtn');
+
+        taskLabel.textContent = proof.task ? `${proof.task.label || 'Task'} · ${proof.task.desc || ''}` : 'Task';
+        previewImg.src = imgData || '';
+
+        submitBtn.addEventListener('click', () => {
+            if (!imgData) {
+                app.showToast('No photo attached.');
+                return;
+            }
+            app.showToast('Proof submitted!');
+            setTimeout(() => {
+                localStorage.removeItem('piggy-habit-proof-img');
+                // mark completion for room to consume
+                localStorage.setItem('piggy-habit-proof-done', JSON.stringify(proof));
+                window.location.href = 'room.html';
+            }, 500);
+        });
+    </script>
+</body>
+</html>

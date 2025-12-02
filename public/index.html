@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Piggy Habit | Login</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="app-shell">
+    <main class="page">
+        <header class="stack mt-8">
+            <div class="logo">
+                <span class="logo-badge">🐷</span>
+                Piggy Habit
+            </div>
+            <h1>Close the gap between intention and action.</h1>
+            <p>Beat phone addiction with social pressure, neon feedback, and an IoT piggy bank.</p>
+        </header>
+
+        <section class="card mt-24">
+            <div class="stack">
+                <div class="input-group">
+                    <label for="nickname">Nickname (max 8 chars)</label>
+                    <input id="nickname" type="text" maxlength="8" placeholder="e.g. YehYoung" autocomplete="nickname">
+                </div>
+
+                <div class="input-group">
+                    <label for="pin">4-digit PIN</label>
+                    <input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="0000" autocomplete="one-time-code">
+                    <span class="helper">Used to lock your piggy habits. Keep it simple.</span>
+                </div>
+
+                <button id="startBtn" class="btn btn-primary">Get Started</button>
+                <button id="demoBtn" class="btn btn-ghost">Continue as Demo</button>
+            </div>
+        </section>
+
+        <p class="center muted mt-16">By continuing you agree to stay accountable with your crew.</p>
+    </main>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <script src="js/app.js"></script>
+    <script>
+        // P1. Landing & Login logic (Spec v1.0)
+        document.addEventListener('DOMContentLoaded', () => {
+            const nicknameEl = document.getElementById('nickname');
+            const pinEl = document.getElementById('pin');
+            const startBtn = document.getElementById('startBtn');
+            const demoBtn = document.getElementById('demoBtn');
+
+            // Persistent auth: auto-redirect if user exists
+            const existing = app.getUser();
+            const activeRoom = app.getActiveRoom();
+            if (existing?.userId && existing?.nickname) {
+                window.location.href = activeRoom ? 'room.html' : 'lobby.html';
+                return;
+            }
+
+            const validate = () => {
+                const nickname = nicknameEl.value.trim();
+                const pin = pinEl.value.trim();
+
+                if (!nickname) {
+                    app.showToast('Enter a nickname.');
+                    nicknameEl.focus();
+                    return null;
+                }
+                if (nickname.length > 8) {
+                    app.showToast('Nickname must be 8 characters or less.');
+                    nicknameEl.focus();
+                    return null;
+                }
+                if (!/^[0-9]{4}$/.test(pin)) {
+                    app.showToast('PIN must be 4 digits.');
+                    pinEl.focus();
+                    return null;
+                }
+                return { nickname, pin };
+            };
+
+            const handleLogin = () => {
+                const payload = validate();
+                if (!payload) return;
+
+                // TODO: Replace with Firebase auth + user creation.
+                const userId = app.generateId();
+                app.saveUser({ userId, nickname: payload.nickname });
+
+                app.showToast(`Welcome, ${payload.nickname}!`);
+                setTimeout(() => window.location.href = 'lobby.html', 500);
+            };
+
+            startBtn.addEventListener('click', handleLogin);
+            pinEl.addEventListener('keyup', (e) => e.key === 'Enter' && handleLogin());
+            nicknameEl.addEventListener('keyup', (e) => e.key === 'Enter' && handleLogin());
+
+            demoBtn.addEventListener('click', () => {
+                app.saveUser({ userId: 'demo-user', nickname: 'Demo' });
+                app.showToast('Entering demo mode...');
+                setTimeout(() => window.location.href = 'lobby.html', 400);
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Piggy Habit | Result</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="app-shell">
+    <main class="page center">
+        <div class="card stack">
+            <div class="muted">Result</div>
+            <h1 id="winnerTitle">Winner</h1>
+            <p id="winnerDesc">Congrats to the champion!</p>
+            <button id="rematchBtn" class="btn btn-primary">Rematch</button>
+            <button class="btn btn-outline" onclick="window.location.href='lobby.html'">Back to Lobby</button>
+        </div>
+    </main>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="js/app.js"></script>
+    <script>
+        app.requireUser();
+        const winnerTitle = document.getElementById('winnerTitle');
+        const winnerDesc = document.getElementById('winnerDesc');
+        const rematchBtn = document.getElementById('rematchBtn');
+        const room = JSON.parse(localStorage.getItem('piggy-habit-room') || '{}');
+
+        const winner = room.winner || room.owner || 'Top Player';
+        winnerTitle.textContent = `${winner} wins!`;
+        winnerDesc.textContent = 'Set up a new challenge and keep the streak.';
+
+        rematchBtn.addEventListener('click', () => {
+            app.showToast('Starting rematch...');
+            setTimeout(() => {
+                window.location.href = 'create.html';
+            }, 400);
+        });
+    </script>
+</body>
+</html>

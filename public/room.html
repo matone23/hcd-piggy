@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Piggy Habit | Room</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="app-shell">
+    <header id="roomHeader" style="padding: 20px; color: #0b1b0f; background: linear-gradient(135deg, #00E054, #00b045);">
+        <div class="between flex">
+            <div id="roomTitle" style="font-weight: 800; font-size: 22px;">Room</div>
+            <button class="btn btn-outline btn-small" style="background: rgba(0,0,0,0.12); color:#0b1b0f; border-color: rgba(255,255,255,0.25);" onclick="window.location.href='lobby.html'">Lobby</button>
+        </div>
+        <div id="leaderBanner" class="pill mt-8" style="background: rgba(0,0,0,0.15); color:#0b1b0f;">Loading leader...</div>
+    </header>
+
+    <main class="page" style="padding-top:16px;">
+        <div id="statusCard" class="card stack" style="margin-bottom:12px;"></div>
+
+        <div class="tab-bar">
+            <div class="tab active" data-tab="mission">🔥 My Mission</div>
+            <div class="tab" data-tab="feed">👀 Feed</div>
+            <div class="tab" data-tab="rank">🏆 Ranking</div>
+        </div>
+        <div class="between flex" style="margin-bottom:12px;">
+            <div class="muted">Jump between core screens.</div>
+            <button class="btn btn-outline btn-small" type="button" onclick="window.location.href='result.html'">Result</button>
+        </div>
+
+        <section id="missionTab" class="stack"></section>
+        <section id="feedTab" class="stack" style="display:none;"></section>
+        <section id="rankTab" class="stack" style="display:none;"></section>
+    </main>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <input id="fileCapture" type="file" accept="image/*" capture="environment" style="display:none;">
+
+    <script src="js/app.js"></script>
+    <script>
+        const user = app.requireUser();
+        const roomData = JSON.parse(localStorage.getItem('piggy-habit-room') || '{}');
+        if (!roomData || Object.keys(roomData).length === 0) {
+            window.location.href = 'lobby.html';
+        }
+        const proofDone = JSON.parse(localStorage.getItem('piggy-habit-proof-done') || 'null');
+        if (proofDone) localStorage.removeItem('piggy-habit-proof-done');
+        const roomName = roomData.name || 'Competition Room';
+        const mode = roomData.mode || 'routine'; // 'routine' or 'oneday'
+        const color = roomData.color || '#00E054';
+        const participants = roomData.participants || [
+            { nickname: user.nickname, score: 120, rate: 0.85, color },
+            { nickname: 'Player B', score: 140, rate: 0.9, color: '#FF3B30' },
+            { nickname: 'Player C', score: 110, rate: 0.72, color: '#007AFF' },
+        ];
+
+        const header = document.getElementById('roomHeader');
+        const roomTitle = document.getElementById('roomTitle');
+        const leaderBanner = document.getElementById('leaderBanner');
+        const statusCard = document.getElementById('statusCard');
+        const missionTab = document.getElementById('missionTab');
+        const feedTab = document.getElementById('feedTab');
+        const rankTab = document.getElementById('rankTab');
+        const tabButtons = document.querySelectorAll('.tab');
+        const fileCapture = document.getElementById('fileCapture');
+
+        roomTitle.textContent = roomName;
+        header.style.background = `linear-gradient(135deg, ${color}, ${color}cc)`;
+
+        const leader = (() => {
+            if (mode === 'routine') {
+                return participants.slice().sort((a,b)=>b.score-a.score)[0];
+            }
+            return participants.slice().sort((a,b)=>b.rate-a.rate)[0];
+        })();
+
+        const iAmLeader = leader.nickname === user.nickname;
+        leaderBanner.textContent = iAmLeader
+            ? 'You are leading! Keep the pace!'
+            : mode === 'routine'
+                ? `👑 ${leader.nickname} is leading with ${leader.score} pts!`
+                : `👑 ${leader.nickname} is leading with ${(leader.rate*100).toFixed(0)}% achieved!`;
+
+        // --- Tabs ---
+        tabButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                tabButtons.forEach(b => b.classList.toggle('active', b === btn));
+                missionTab.style.display = btn.dataset.tab === 'mission' ? 'flex' : 'none';
+                feedTab.style.display = btn.dataset.tab === 'feed' ? 'flex' : 'none';
+                rankTab.style.display = btn.dataset.tab === 'rank' ? 'flex' : 'none';
+            });
+        });
+
+        // --- Mission Tab ---
+        const routineState = {
+            completed: mode === 'routine' && proofDone && proofDone.task,
+            todayPoints: proofDone?.task?.points || 0,
+            gap: iAmLeader ? 0 : Math.max(0, (leader.score || 0) - (participants.find(p=>p.nickname===user.nickname)?.score || 0)),
+        };
+
+        const oneDayState = {
+            tasks: (roomData.goals || []).map((g, idx) => ({ ...g, done: g.done || false, idx })),
+        };
+
+        // Apply completion from proof
+        if (mode === 'oneday' && proofDone?.task?.idx !== undefined) {
+            const target = oneDayState.tasks.find(t => t.idx === proofDone.task.idx);
+            if (target) target.done = true;
+        }
+
+        const triggerUpload = (payload) => {
+            localStorage.setItem('piggy-habit-proof', JSON.stringify({ task: payload, roomName, color, mode }));
+            window.location.href = 'upload.html';
+        };
+
+        const renderRoutineMission = () => {
+            missionTab.innerHTML = '';
+
+            statusCard.innerHTML = `
+                <div style="font-weight:700;">Current rank focus</div>
+                <div class="muted">You are ${iAmLeader ? 'leading' : 'behind by ' + routineState.gap + ' pts'}</div>
+                <div class="muted">Today points: ${routineState.todayPoints} pts</div>
+            `;
+
+            if (routineState.completed) {
+                const doneCard = document.createElement('div');
+                doneCard.className = 'card';
+                doneCard.textContent = '🎉 Today’s verification is complete!';
+                missionTab.appendChild(doneCard);
+                return;
+            }
+
+            const goals = roomData.goals || [
+                { label: 'Min', desc: 'Drink water', points: 2 },
+                { label: 'More', desc: 'Supplements', points: 5 },
+                { label: 'Max', desc: 'Run 30m', points: 10 },
+            ];
+
+            goals.forEach(goal => {
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-outline';
+                btn.textContent = `${goal.label} · ${goal.desc} (+${goal.points} pts)`;
+                btn.addEventListener('click', () => triggerUpload(goal));
+                missionTab.appendChild(btn);
+            });
+        };
+
+        const renderOneDayMission = () => {
+            missionTab.innerHTML = '';
+
+            const totalMinutes = oneDayState.tasks.reduce((sum, t) => sum + (t.minutes || 0), 0) || 1;
+            const earned = oneDayState.tasks.filter(t => t.done).reduce((sum, t) => sum + (t.minutes || 0), 0);
+            const remaining = totalMinutes - earned;
+            const pct = Math.round((earned / totalMinutes) * 100);
+
+            statusCard.innerHTML = `
+                <div style="font-weight:700;">Keep up in the race</div>
+                <div class="muted">Remaining time: ${formatTime(remaining)} / Total ${formatTime(totalMinutes)}</div>
+                <div class="progress"><div class="progress-bar" style="width:${pct}%;"></div></div>
+            `;
+
+            const list = document.createElement('div');
+            list.className = 'list';
+
+            oneDayState.tasks.forEach((task, idx) => {
+                const row = document.createElement('div');
+                row.className = 'list-item flex between';
+                row.style.gap = '10px';
+
+                const left = document.createElement('div');
+                left.className = 'flex';
+                left.style.gap = '10px';
+                left.style.alignItems = 'center';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = task.done;
+
+                const textWrap = document.createElement('div');
+                const title = document.createElement('div');
+                title.style.fontWeight = '700';
+                title.textContent = task.text || 'Task';
+                const meta = document.createElement('div');
+                meta.className = 'muted';
+                meta.textContent = `${task.minutes || 0} min`;
+                textWrap.appendChild(title);
+                textWrap.appendChild(meta);
+
+                if (task.done) {
+                    title.style.textDecoration = 'line-through';
+                    title.style.opacity = '0.6';
+                }
+
+                const badge = document.createElement('div');
+                badge.className = 'badge';
+                badge.textContent = `${task.minutes || 0}m`;
+
+                left.appendChild(checkbox);
+                left.appendChild(badge);
+                left.appendChild(textWrap);
+
+                const cameraBtn = document.createElement('button');
+                cameraBtn.className = 'btn btn-outline btn-small';
+                cameraBtn.type = 'button';
+                cameraBtn.textContent = '📸';
+
+                row.appendChild(left);
+                row.appendChild(cameraBtn);
+                list.appendChild(row);
+
+                const openCamera = () => {
+                    fileCapture.click();
+                    fileCapture.onchange = (e) => {
+                        const file = e.target.files[0];
+                        if (!file) {
+                            checkbox.checked = false;
+                            return;
+                        }
+                        triggerUpload({ ...task, idx: task.idx });
+                    };
+                };
+
+                checkbox.addEventListener('change', () => {
+                    if (checkbox.checked) {
+                        openCamera();
+                    } else {
+                        task.done = false;
+                        renderOneDayMission();
+                    }
+                });
+                cameraBtn.addEventListener('click', openCamera);
+            });
+
+            missionTab.appendChild(list);
+        };
+
+        const formatTime = (minutes) => {
+            const h = Math.floor(minutes / 60);
+            const m = minutes % 60;
+            if (!h) return `${m} min`;
+            if (!m) return `${h} hr`;
+            return `${h} hr ${m} min`;
+        };
+
+        // --- Feed Tab ---
+        const feedData = (roomData.feed || [
+            { user: user.nickname, badge: 'Min', text: 'Drink water', time: 'Just now', img: '', hype: 2, sus: 0 },
+            { user: 'Teammate', badge: '30m', text: 'Vocab 50 words', time: '5m ago', img: '', hype: 1, sus: 1 },
+        ]).map(item => ({ ...item, flagged: false }));
+
+        const renderFeed = () => {
+            feedTab.innerHTML = '';
+            feedData.forEach((cardData, idx) => {
+                const card = document.createElement('div');
+                const flagged = cardData.sus >= 2;
+                card.className = 'card stack';
+                card.style.border = flagged ? '1px solid var(--accent)' : '1px solid var(--border)';
+
+                const header = document.createElement('div');
+                header.className = 'between flex';
+                header.innerHTML = `
+                    <div>
+                        <div style="font-weight:700;">${cardData.user}</div>
+                        <div class="muted">${cardData.time}</div>
+                    </div>
+                    <div class="badge">${cardData.badge}</div>
+                `;
+                card.appendChild(header);
+
+                const title = document.createElement('div');
+                title.style.fontWeight = '700';
+                title.textContent = cardData.text;
+                card.appendChild(title);
+
+                if (flagged) {
+                    const label = document.createElement('div');
+                    label.className = 'badge';
+                    label.style.background = 'rgba(255,0,85,0.15)';
+                    label.style.color = 'var(--accent)';
+                    label.textContent = '🚨 Pending review';
+                    card.appendChild(label);
+                }
+
+                const footer = document.createElement('div');
+                footer.className = 'between flex';
+                const hypeBtn = document.createElement('button');
+                hypeBtn.className = 'btn btn-outline btn-small';
+                hypeBtn.textContent = `🔥 Cheer (${cardData.hype || 0})`;
+                hypeBtn.addEventListener('click', () => {
+                    cardData.hype = (cardData.hype || 0) + 1;
+                    renderFeed();
+                });
+
+                const susBtn = document.createElement('button');
+                susBtn.className = 'btn btn-outline btn-small';
+                susBtn.textContent = `🤔 Not sure (${cardData.sus || 0})`;
+                susBtn.addEventListener('click', () => {
+                    if (cardData.flagged) {
+                        app.showToast('You already flagged this.');
+                        return;
+                    }
+                    cardData.sus = (cardData.sus || 0) + 1;
+                    cardData.flagged = true;
+                    if (cardData.sus >= 2) app.showToast('Sent for verification.');
+                    renderFeed();
+                });
+
+                footer.appendChild(hypeBtn);
+                footer.appendChild(susBtn);
+                card.appendChild(footer);
+
+                feedTab.appendChild(card);
+            });
+        };
+
+        // --- Ranking Tab ---
+        const renderRanking = () => {
+            rankTab.innerHTML = '';
+
+            const streak = mode === 'routine'
+                ? `🔥 Our room is on a ${roomData.duration || 1}-day streak!`
+                : `⚡ ${roomData.dday || 'Today'} is the deadline.`;
+
+            const streakRow = document.createElement('div');
+            streakRow.className = 'muted';
+            streakRow.textContent = streak;
+            rankTab.appendChild(streakRow);
+
+            const sorted = participants.slice().sort((a,b) => {
+                if (mode === 'routine') return b.score - a.score;
+                if (b.rate === a.rate) return 0;
+                return b.rate - a.rate;
+            });
+
+            sorted.forEach((row, idx) => {
+                const item = document.createElement('div');
+                item.className = 'list-item flex between';
+                if (row.nickname === user.nickname) {
+                    item.style.borderColor = 'var(--primary)';
+                }
+                const status = mode === 'routine'
+                    ? (row.todayDone ? '✅ Today' : '❌ Pending')
+                    : `${row.remaining || 0} left`;
+
+                const score = mode === 'routine'
+                    ? `${row.score || 0} pts`
+                    : `${Math.round((row.rate || 0)*100)}%`;
+
+                item.innerHTML = `
+                    <div class="flex" style="gap:12px; align-items:center;">
+                        <strong>${idx + 1}</strong>
+                        <div style="width:14px; height:14px; border-radius:50%; background:${row.color || '#fff'};"></div>
+                        <div>
+                            <div style="font-weight:700;">${row.nickname}</div>
+                            <div class="muted">${status}</div>
+                        </div>
+                    </div>
+                    <strong>${score}</strong>
+                `;
+                rankTab.appendChild(item);
+            });
+        };
+
+        // Init
+        if (mode === 'routine') {
+            renderRoutineMission();
+        } else {
+            renderOneDayMission();
+        }
+        renderFeed();
+        renderRanking();
+    </script>
+</body>
+</html>

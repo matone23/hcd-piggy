@@ -1,0 +1,346 @@
+/* ================================================
+   Piggy Habit - Neon Arcade Design System (Phase 1)
+   Implements: Variables, Reset, Typography, Buttons,
+   Inputs, Layout Utilities, Toast (Spec v1.0)
+   ================================================ */
+
+/* ---- 1. Variables ---- */
+:root {
+    --bg: #0f1115;
+    --card-bg: #16181f;
+    --primary: #00E054;
+    --accent: #FF0055;
+    --text: #FFFFFF;
+    --muted: #b6beca;
+    --border: #242732;
+    --shadow: 0 14px 36px rgba(0, 0, 0, 0.25);
+    --radius-sm: 8px;
+    --radius-lg: 16px;
+    --font: "Pretendard", "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* ---- 2. Reset ---- */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Mobile viewport bounding */
+.app-shell {
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    background: var(--bg);
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+button,
+input {
+    font-family: inherit;
+}
+
+/* ---- 3. Layout ---- */
+.page {
+    padding: 28px 20px 52px;
+}
+
+.card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow);
+}
+
+.stack {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.logo {
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 22px;
+}
+
+.logo-badge {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), #0fa);
+    display: grid;
+    place-items: center;
+    color: #0b1b0f;
+    font-weight: 900;
+    box-shadow: 0 0 18px rgba(0, 224, 84, 0.4);
+}
+
+/* ---- 4. Typography ---- */
+h1 {
+    margin: 10px 0 6px;
+    font-size: 27px;
+    font-weight: 800;
+}
+
+p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.6;
+}
+
+/* ---- 5. Form Elements ---- */
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.input-group label {
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.01em;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="number"] {
+    width: 100%;
+    padding: 14px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: #151515;
+    color: var(--text);
+    font-size: 16px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(0, 224, 84, 0.2);
+}
+
+.helper {
+    font-size: 13px;
+    color: var(--muted);
+}
+
+/* ---- 6. Buttons ---- */
+.btn {
+    width: 100%;
+    padding: 16px;
+    border-radius: var(--radius-lg);
+    border: none;
+    font-weight: 700;
+    font-size: 16px;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.2s, background 0.2s;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--primary), #15ff8f);
+    color: #0b1b0f;
+    box-shadow: 0 14px 28px rgba(0, 224, 84, 0.3);
+}
+
+.btn-primary:active {
+    transform: translateY(1px);
+    box-shadow: 0 8px 18px rgba(0, 224, 84, 0.24);
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--muted);
+}
+
+.btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    box-shadow: none;
+}
+
+.btn-small {
+    padding: 10px 14px;
+    font-size: 14px;
+    width: auto;
+}
+
+/* ---- 7. Utilities ---- */
+.mt-8 { margin-top: 8px; }
+.mt-16 { margin-top: 16px; }
+.mt-24 { margin-top: 24px; }
+.center { text-align: center; }
+.muted { color: var(--muted); }
+.flex { display: flex; }
+.between { justify-content: space-between; align-items: center; }
+.pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text);
+    font-weight: 600;
+}
+
+.badge {
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    background: rgba(0, 224, 84, 0.15);
+    color: var(--primary);
+    font-weight: 700;
+    font-size: 12px;
+}
+
+.grid-colors {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+    gap: 10px;
+}
+
+.color-swatch {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    position: relative;
+}
+
+.color-swatch.active {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(0, 224, 84, 0.25);
+}
+
+.color-swatch.taken {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.color-swatch .swatch-icon {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    color: #0b0b0b;
+    font-size: 18px;
+}
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.chip {
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.chip.active {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(0, 224, 84, 0.08);
+}
+
+.tab-bar {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border-radius: var(--radius-lg);
+    background: #11141a;
+    border: 1px solid var(--border);
+    margin: 16px 0 20px;
+}
+
+.tab {
+    padding: 14px 8px;
+    text-align: center;
+    font-weight: 700;
+    color: var(--muted);
+    cursor: pointer;
+    border-radius: var(--radius-lg);
+}
+
+.tab.active {
+    background: rgba(0, 224, 84, 0.12);
+    color: var(--primary);
+}
+
+.list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.list-item {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    line-height: 1.5;
+}
+
+.progress {
+    width: 100%;
+    height: 12px;
+    background: #0f0f0f;
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--primary));
+    width: 0%;
+    transition: width 0.2s;
+}
+
+/* ---- 8. Toast (Spec: bottom popup, auto-hide) ---- */
+#toast {
+    position: fixed;
+    left: 50%;
+    bottom: 28px;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.88);
+    color: var(--text);
+    padding: 12px 18px;
+    border-radius: 14px;
+    font-weight: 600;
+    box-shadow: 0 0 18px rgba(0, 224, 84, 0.32);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    z-index: 999;
+}
+
+#toast.show {
+    opacity: 1;
+}

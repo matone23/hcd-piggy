@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Piggy Habit | Lobby</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="app-shell">
+    <main class="page">
+        <header class="between flex">
+            <div>
+                <div class="muted">Welcome back</div>
+                <div id="greeting" style="font-weight: 800; font-size: 22px;">Loading...</div>
+            </div>
+            <button class="btn btn-outline btn-small" id="logoutBtn">Logout</button>
+        </header>
+
+        <section class="stack mt-24">
+            <div class="card">
+                <div class="between flex">
+                    <div>
+                        <div class="badge">Create Room</div>
+                        <h1 style="margin: 8px 0 4px;">Start a new competition</h1>
+                        <p>Pick routine or 1-day mode and invite friends.</p>
+                    </div>
+                    <button class="btn btn-primary btn-small" id="createBtn" style="width:auto;">Create</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="stack">
+                    <div class="between flex">
+                        <div>
+                            <div class="badge" style="background: rgba(255,0,85,0.15); color: var(--accent);">Join Room</div>
+                            <h1 style="margin: 8px 0 4px;">Enter 6-digit code</h1>
+                            <p>Friends can share a code from their room.</p>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label for="join-code">Invite Code</label>
+                        <input id="join-code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456">
+                    </div>
+                    <button class="btn btn-outline" id="joinBtn">Join Room</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="js/app.js"></script>
+    <script>
+        const user = app.requireUser();
+        const greeting = document.getElementById('greeting');
+        const createBtn = document.getElementById('createBtn');
+        const joinBtn = document.getElementById('joinBtn');
+        const joinCode = document.getElementById('join-code');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const activeRoom = app.getActiveRoom();
+
+        greeting.textContent = `Hi, ${user.nickname} 👋`;
+
+        createBtn.addEventListener('click', () => {
+            window.location.href = 'create.html';
+        });
+
+        joinBtn.addEventListener('click', () => {
+            const code = joinCode.value.trim();
+            if (!/^[0-9]{6}$/.test(code)) {
+                app.showToast('Enter a valid 6-digit code.');
+                joinCode.focus();
+                return;
+            }
+            app.showToast(`Joining room ${code}...`);
+            const draft = {
+                name: 'Joined Room',
+                mode: 'routine',
+                duration: 7,
+                joinCode: code,
+            };
+            localStorage.setItem('piggy-habit-draft', JSON.stringify(draft));
+            setTimeout(() => window.location.href = 'onboarding.html?type=routine', 400);
+        });
+
+        logoutBtn.addEventListener('click', () => {
+            app.clearUser();
+            app.showToast('Logged out');
+            setTimeout(() => window.location.href = 'index.html', 400);
+        });
+
+        if (activeRoom) {
+            const resume = document.createElement('button');
+            resume.className = 'btn btn-primary';
+            resume.style.marginTop = '16px';
+            resume.textContent = 'Go to active room';
+            resume.addEventListener('click', () => window.location.href = 'room.html');
+            document.querySelector('main .stack').appendChild(resume);
+        }
+    </script>
+</body>
+</html>
