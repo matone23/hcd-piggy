@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Piggy Bank - Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header class="nav">
+        <div id="user-chip" style="font-weight: 700;"></div>
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--green);">
+            <div style="width: 8px; height: 8px; background: var(--green); border-radius: 50%;"></div>
+            Connected
+        </div>
+    </header>
+
+    <div class="container">
+        <section id="hero-section"></section>
+
+        <h3>My Active Rooms</h3>
+        <div id="room-list"></div>
+    </div>
+
+    <button class="fab" aria-label="Create room" onclick="app.goTo('create-room.html')">+</button>
+
+    <script src="js/global.js"></script>
+    <script>
+        const user = app.checkAuth();
+        const heroSection = document.getElementById('hero-section');
+        const roomList = document.getElementById('room-list');
+
+        const formatStatus = (room) => {
+            if (room.status) return room.status;
+            return room.isDone ? 'On track' : 'Behind';
+        };
+
+        const formatPoints = (room) => {
+            if (typeof room.points === 'number') return `${room.points} pts`;
+            if (room.score) return `${room.score} pts`;
+            return '0 pts';
+        };
+
+        const saveAndOpen = (room) => {
+            const roomId = room.id ?? room.name ?? Date.now();
+            app.db.save('currentRoomId', roomId);
+            app.goTo('routine.html');
+        };
+
+        const renderHero = (room) => {
+            const baseColor = room.color || '#3182F6';
+            const gradient = `linear-gradient(135deg, ${baseColor}, #0b4bd6)`;
+            const day = room.day || 1;
+            const copy = room.copy || (room.isDone ? 'You are winning! Keep it up. 🏆' : "Complete today's mission to turn green. 🚨");
+
+            const card = document.createElement('div');
+            card.className = 'hero-card';
+            card.style.background = gradient;
+            card.style.cursor = 'pointer';
+            card.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div style="background: rgba(0,0,0,0.18); padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 700;">
+                        🔥 DAY ${day}
+                    </div>
+                    <div style="font-weight: 800; font-size: 14px; opacity: 0.9;">
+                        ${room.rank || '1st Place'}
+                    </div>
+                </div>
+                <h2 style="font-size: 24px; margin-bottom: 8px;">${room.name || 'Your first room'}</h2>
+                <p style="color: rgba(255,255,255,0.9); font-size: 14px;">${copy}</p>
+                <button type="button" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4); color: white; padding: 10px 20px; border-radius: 20px; font-weight: 600; margin-top: 16px; cursor: pointer;">
+                    ${room.isDone ? 'View status' : 'Upload proof'}
+                </button>
+            `;
+            card.addEventListener('click', () => saveAndOpen(room));
+            heroSection.appendChild(card);
+        };
+
+        const renderList = (rooms) => {
+            roomList.innerHTML = '';
+            rooms.forEach((room) => {
+                const statusText = formatStatus(room);
+                const statusIcon = room.isDone ? '🟢' : '🔴';
+                const goalText = room.goal || 'Daily routine challenge';
+                const points = formatPoints(room);
+
+                const item = document.createElement('div');
+                item.className = 'list-item';
+                item.innerHTML = `
+                    <div>
+                        <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">${room.name || 'Untitled Room'}</div>
+                        <div style="font-size: 13px; color: var(--grey);">${goalText}</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-weight: 700; color: var(--primary); margin-bottom: 4px;">${points}</div>
+                        <div style="font-size: 12px; color: var(--grey);">${statusIcon} ${statusText}</div>
+                    </div>
+                `;
+                item.onclick = () => saveAndOpen(room);
+                roomList.appendChild(item);
+            });
+        };
+
+        const renderEmptyState = () => {
+            heroSection.innerHTML = `
+                <div class="card" style="text-align: center; padding: 40px 20px;">
+                    <div style="font-size: 40px; margin-bottom: 16px;">📭</div>
+                    <h2 style="margin-bottom: 8px;">No active rooms</h2>
+                    <p>Start a competition to keep Yeh-Young off her phone.</p>
+                    <button class="btn-primary" style="margin-top: 24px;" onclick="app.goTo('create-room.html')">Create a room</button>
+                </div>
+            `;
+            roomList.innerHTML = `
+                <p style="text-align: center; margin-top: 40px; opacity: 0.6;">Tap the + button to create your first room.</p>
+            `;
+        };
+
+        const renderDashboard = () => {
+            if (user) document.getElementById('user-chip').textContent = `Hello, ${user} 👋`;
+            const rooms = app.db.load('rooms') || [];
+            heroSection.innerHTML = '';
+            roomList.innerHTML = '';
+
+            if (!rooms.length) {
+                renderEmptyState();
+                return;
+            }
+
+            renderHero(rooms[0]);
+            renderList(rooms);
+        };
+
+        renderDashboard();
+    </script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Routine Detail</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        
+        <div style="margin-bottom: 24px;">
+            <a href="home.html" style="text-decoration: none; color: var(--text-sub); font-size: 14px;">&lt; 뒤로가기</a>
+            <h2 style="margin-top: 8px;">미라클 모닝 챌린지</h2>
+        </div>
+
+        <div class="card" style="text-align: center; padding: 30px 20px;">
+            <p style="margin-bottom: 8px;">현재 격차</p>
+            <h1 style="font-size: 36px; color: var(--danger);">-5 점</h1>
+            <p style="font-size: 13px;">민준님이 이기고 있어요. 분발하세요!</p>
+        </div>
+
+        <h3 style="font-size: 18px; font-weight: 700; margin: 30px 0 16px;">오늘 달성한 난이도는?</h3>
+
+        <div class="card" onclick="alert('2점 획득! (Demo)')" style="display:flex; align-items:center; cursor:pointer;">
+            <div style="font-size: 32px; margin-right: 16px;">🌱</div>
+            <div>
+                <div style="font-weight:700;">Mini (2점)</div>
+                <div style="font-size:13px; color:var(--text-sub);">침대 정리하기</div>
+            </div>
+        </div>
+
+        <div class="card" onclick="alert('5점 획득! (Demo)')" style="display:flex; align-items:center; cursor:pointer;">
+            <div style="font-size: 32px; margin-right: 16px;">🏃</div>
+            <div>
+                <div style="font-weight:700;">More (5점)</div>
+                <div style="font-size:13px; color:var(--text-sub);">스트레칭 10분</div>
+            </div>
+        </div>
+
+        <div class="card" onclick="location.href='upload.html'" style="display:flex; align-items:center; cursor:pointer; border: 2px solid var(--primary-blue); background-color: #F7FBFF;">
+            <div style="font-size: 32px; margin-right: 16px;">🔥</div>
+            <div>
+                <div style="font-weight:700; color:var(--primary-blue);">Max (10점)</div>
+                <div style="font-size:13px; color:var(--text-main);">조깅 30분 + 샤워</div>
+            </div>
+        </div>
+
+    </div>
+</body>
+</html>

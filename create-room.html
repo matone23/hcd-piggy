@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Create Room</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <div style="margin-bottom: 24px;">
+            <a href="home.html" style="text-decoration: none; color: var(--text-sub); font-size: 14px;">&lt; 뒤로가기</a>
+            <h2>새로운 대결 만들기</h2>
+        </div>
+
+        <label style="display:block; margin-bottom:8px; font-weight:600;">방 이름</label>
+        <input type="text" id="roomName" class="input-field" placeholder="예) 영어 단어 외우기">
+
+        <label style="display:block; margin-bottom:12px; font-weight:600;">목표 점수</label>
+        <div style="display: flex; gap: 10px; margin-bottom: 24px;">
+            <button class="btn btn-secondary" style="height: 40px; flex:1;">50점</button>
+            <button class="btn btn-primary" style="height: 40px; flex:1;">100점</button>
+            <button class="btn btn-secondary" style="height: 40px; flex:1;">200점</button>
+        </div>
+
+        <label style="display:block; margin-bottom:12px; font-weight:600;">내 LED 색상</label>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 40px;">
+            <div style="width:40px; height:40px; border-radius:50%; background:red; cursor:pointer; border:3px solid var(--bg-color); outline:2px solid var(--text-main);"></div>
+            <div style="width:40px; height:40px; border-radius:50%; background:green; cursor:pointer;"></div>
+            <div style="width:40px; height:40px; border-radius:50%; background:blue; cursor:pointer;"></div>
+            <div style="width:40px; height:40px; border-radius:50%; background:yellow; cursor:pointer;"></div>
+            <div style="width:40px; height:40px; border-radius:50%; background:purple; cursor:pointer;"></div>
+        </div>
+
+        <button class="btn btn-primary" onclick="alert('방이 생성되었습니다! (Demo)')">방 만들기</button>
+    </div>
+    
+    <script src="js/app.js"></script>
+    <script>requireAuth();</script>
+</body>
+</html>
