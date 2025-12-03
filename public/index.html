@@ -39,15 +39,69 @@
     </main>
 
     <div id="toast" role="status" aria-live="polite"></div>
+    <script type="module">
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-analytics.js";
+        import { getAuth } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+        import { getFirestore } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+        import { getDatabase } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
 
-    <script src="js/app.js"></script>
-    <script>
-        // P1. Landing & Login logic (Spec v1.0)
-        document.addEventListener('DOMContentLoaded', () => {
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDA2c4ppqojUpSi090q7jyXSLR_8GTCXIw",
+            authDomain: "hcd-piggy.firebaseapp.com",
+            databaseURL: "https://hcd-piggy-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "hcd-piggy",
+            storageBucket: "hcd-piggy.firebasestorage.app",
+            messagingSenderId: "663289864346",
+            appId: "1:663289864346:web:8eba034298e5681d7b3f23",
+            measurementId: "G-KFPDZ1GW62"
+        };
+
+        // Initialize Firebase
+        const firebaseApp = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(firebaseApp);
+        const auth = getAuth(firebaseApp);
+        const db = getFirestore(firebaseApp);
+        const database = getDatabase(firebaseApp);
+        
+        // Make Firebase available globally
+        window.firebaseAuth = auth;
+        window.firebaseDb = db;
+        window.firebaseDatabase = database;
+        window.firebaseApp = firebaseApp;
+        
+        console.log('Firebase initialized with Realtime Database');
+    </script>
+
+    
+    <script type="module">
+        // P1. Landing & Login logic with Firebase integration
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('DOM loaded, initializing app...');
+            
             const nicknameEl = document.getElementById('nickname');
             const pinEl = document.getElementById('pin');
             const startBtn = document.getElementById('startBtn');
             const demoBtn = document.getElementById('demoBtn');
+
+            console.log('Elements found:', { nicknameEl, pinEl, startBtn, demoBtn });
+
+            // Load app module
+            let app;
+            try {
+                const appModule = await import('./js/app.js');
+                app = appModule.default;
+                console.log('App module loaded:', app);
+                
+                // Initialize Firebase
+                await app.initializeFirebase();
+                console.log('Firebase initialized, ready:', app.isFirebaseReady());
+            } catch (error) {
+                console.error('Failed to load app module:', error);
+                return;
+            }
 
             // Persistent auth: auto-redirect if user exists
             const existing = app.getUser();
@@ -79,27 +133,70 @@
                 return { nickname, pin };
             };
 
-            const handleLogin = () => {
+            const handleLogin = async () => {
+                console.log('handleLogin called');
                 const payload = validate();
                 if (!payload) return;
 
-                // TODO: Replace with Firebase auth + user creation.
-                const userId = app.generateId();
-                app.saveUser({ userId, nickname: payload.nickname });
+                try {
+                    startBtn.disabled = true;
+                    startBtn.textContent = 'Creating Account...';
+                    console.log('Starting user creation process...');
 
-                app.showToast(`Welcome, ${payload.nickname}!`);
-                setTimeout(() => window.location.href = 'lobby.html', 500);
+                    const userId = app.generateId();
+                    console.log('Generated user ID:', userId);
+                    
+                    const result = await app.saveUser({ 
+                        userId,
+                        nickname: payload.nickname,
+                        pin: payload.pin
+                    });
+                    
+                    console.log('User creation result:', result);
+
+                    if (app.isFirebaseReady()) {
+                        app.showToast(`Welcome, ${payload.nickname}! (Firebase enabled)`);
+                    } else {
+                        app.showToast(`Welcome, ${payload.nickname}! (Offline mode)`);
+                    }
+                    
+                    console.log('Redirecting to lobby...');
+                    setTimeout(() => {
+                        window.location.href = 'lobby.html';
+                    }, 500);
+                } catch (error) {
+                    console.error('❌ Login error:', error);
+                    console.error('Error details:', {
+                        message: error.message,
+                        stack: error.stack
+                    });
+                    app.showToast('Failed to create account. Please try again.');
+                } finally {
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'Get Started';
+                    console.log('Login process completed (finally block)');
+                }
             };
 
+            const handleDemo = async () => {
+                console.log('handleDemo called');
+                try {
+                    await app.saveUser({ userId: 'demo-user', nickname: 'Demo' });
+                    app.showToast('Entering demo mode...');
+                    setTimeout(() => window.location.href = 'lobby.html', 400);
+                } catch (error) {
+                    console.error('Demo error:', error);
+                    app.showToast('Error entering demo mode.');
+                }
+            };
+
+            // Add event listeners
             startBtn.addEventListener('click', handleLogin);
             pinEl.addEventListener('keyup', (e) => e.key === 'Enter' && handleLogin());
             nicknameEl.addEventListener('keyup', (e) => e.key === 'Enter' && handleLogin());
+            demoBtn.addEventListener('click', handleDemo);
 
-            demoBtn.addEventListener('click', () => {
-                app.saveUser({ userId: 'demo-user', nickname: 'Demo' });
-                app.showToast('Entering demo mode...');
-                setTimeout(() => window.location.href = 'lobby.html', 400);
-            });
+            console.log('Event listeners attached');
         });
     </script>
 </body>

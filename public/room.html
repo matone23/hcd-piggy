@@ -36,71 +36,155 @@
     <div id="toast" role="status" aria-live="polite"></div>
     <input id="fileCapture" type="file" accept="image/*" capture="environment" style="display:none;">
 
-    <script src="js/app.js"></script>
-    <script>
-        const user = app.requireUser();
-        const roomData = JSON.parse(localStorage.getItem('piggy-habit-room') || '{}');
-        if (!roomData || Object.keys(roomData).length === 0) {
-            window.location.href = 'lobby.html';
-        }
-        const proofDone = JSON.parse(localStorage.getItem('piggy-habit-proof-done') || 'null');
-        if (proofDone) localStorage.removeItem('piggy-habit-proof-done');
-        const roomName = roomData.name || 'Competition Room';
-        const mode = roomData.mode || 'routine'; // 'routine' or 'oneday'
-        const color = roomData.color || '#00E054';
-        const participants = roomData.participants || [
-            { nickname: user.nickname, score: 120, rate: 0.85, color },
-            { nickname: 'Player B', score: 140, rate: 0.9, color: '#FF3B30' },
-            { nickname: 'Player C', score: 110, rate: 0.72, color: '#007AFF' },
-        ];
-
-        const header = document.getElementById('roomHeader');
-        const roomTitle = document.getElementById('roomTitle');
-        const leaderBanner = document.getElementById('leaderBanner');
-        const statusCard = document.getElementById('statusCard');
-        const missionTab = document.getElementById('missionTab');
-        const feedTab = document.getElementById('feedTab');
-        const rankTab = document.getElementById('rankTab');
-        const tabButtons = document.querySelectorAll('.tab');
-        const fileCapture = document.getElementById('fileCapture');
-
-        roomTitle.textContent = roomName;
-        header.style.background = `linear-gradient(135deg, ${color}, ${color}cc)`;
-
-        const leader = (() => {
-            if (mode === 'routine') {
-                return participants.slice().sort((a,b)=>b.score-a.score)[0];
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js';
+        import { getAuth } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js';
+        import { getFirestore } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
+        import { getDatabase } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js';
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyDA2c4ppqojUpSi090q7jyXSLR_8GTCXIw",
+            authDomain: "hcd-piggy.firebaseapp.com",
+            databaseURL: "https://hcd-piggy-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "hcd-piggy",
+            storageBucket: "hcd-piggy.firebasestorage.app",
+            messagingSenderId: "663289864346",
+            appId: "1:663289864346:web:8eba034298e5681d7b3f23"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const database = getDatabase(app);
+        
+        window.firebaseAuth = auth;
+        window.firebaseDb = db;
+        window.firebaseDatabase = database;
+        window.firebaseApp = app;
+    </script>
+    
+    <script type="module">
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('Room page DOM loaded');
+            
+            // Load app module
+            let app;
+            try {
+                const appModule = await import('./js/app.js');
+                app = appModule.default;
+                
+                // Initialize Firebase
+                await app.initializeFirebase();
+                console.log('Firebase ready in room:', app.isFirebaseReady());
+            } catch (error) {
+                console.error('Failed to load app module:', error);
+                return;
             }
-            return participants.slice().sort((a,b)=>b.rate-a.rate)[0];
-        })();
 
-        const iAmLeader = leader.nickname === user.nickname;
-        leaderBanner.textContent = iAmLeader
-            ? 'You are leading! Keep the pace!'
-            : mode === 'routine'
-                ? `👑 ${leader.nickname} is leading with ${leader.score} pts!`
-                : `👑 ${leader.nickname} is leading with ${(leader.rate*100).toFixed(0)}% achieved!`;
+            const user = app.requireUser();
+            const roomData = JSON.parse(localStorage.getItem('piggy-habit-room') || '{}');
+            console.log('Room data loaded:', roomData);
+            
+            if (!roomData || Object.keys(roomData).length === 0) {
+                console.log('No room data found, redirecting to lobby');
+                window.location.href = 'lobby.html';
+                return;
+            }
+            
+            const proofDone = JSON.parse(localStorage.getItem('piggy-habit-proof-done') || 'null');
+            if (proofDone) localStorage.removeItem('piggy-habit-proof-done');
+            
+            const roomName = roomData.name || 'Competition Room';
+            const mode = roomData.mode || 'routine'; // 'routine' or 'oneday'
+            const color = roomData.color || '#00E054';
+            
+            // Try to get participants from Firebase, fallback to local data
+            let participants = [];
+            if (app.isFirebaseReady() && roomData.id) {
+                try {
+                    const firebaseRoom = await app.getRoom(roomData.id);
+                    if (firebaseRoom && firebaseRoom.participants) {
+                        participants = Object.values(firebaseRoom.participants);
+                        console.log('Loaded participants from Firebase:', participants);
+                    }
+                } catch (error) {
+                    console.warn('Failed to load participants from Firebase:', error);
+                }
+            }
+            
+            // Fallback to mock data for development
+            if (participants.length === 0) {
+                participants = roomData.participants || [
+                    { nickname: user.nickname, score: 120, rate: 0.85, color },
+                    { nickname: 'Player B', score: 140, rate: 0.9, color: '#FF3B30' },
+                    { nickname: 'Player C', score: 110, rate: 0.72, color: '#007AFF' },
+                ];
+                console.log('Using fallback participants:', participants);
+            }
 
-        // --- Tabs ---
-        tabButtons.forEach(btn => {
-            btn.addEventListener('click', () => {
-                tabButtons.forEach(b => b.classList.toggle('active', b === btn));
-                missionTab.style.display = btn.dataset.tab === 'mission' ? 'flex' : 'none';
-                feedTab.style.display = btn.dataset.tab === 'feed' ? 'flex' : 'none';
-                rankTab.style.display = btn.dataset.tab === 'rank' ? 'flex' : 'none';
+            const header = document.getElementById('roomHeader');
+            const roomTitle = document.getElementById('roomTitle');
+            const leaderBanner = document.getElementById('leaderBanner');
+            const statusCard = document.getElementById('statusCard');
+            const missionTab = document.getElementById('missionTab');
+            const feedTab = document.getElementById('feedTab');
+            const rankTab = document.getElementById('rankTab');
+            const tabButtons = document.querySelectorAll('.tab');
+            const fileCapture = document.getElementById('fileCapture');
+
+            console.log('Elements found:', { header, roomTitle, leaderBanner, statusCard });
+
+            if (roomTitle) {
+                roomTitle.textContent = roomName;
+            }
+            if (header) {
+                header.style.background = `linear-gradient(135deg, ${color}, ${color}cc)`;
+            }
+
+            const leader = (() => {
+                if (participants.length === 0) return null;
+                if (mode === 'routine') {
+                    return participants.slice().sort((a,b)=>(b.score||0)-(a.score||0))[0];
+                }
+                return participants.slice().sort((a,b)=>(b.rate||0)-(a.rate||0))[0];
+            })();
+
+            console.log('Leader calculated:', leader);
+
+            const iAmLeader = leader && leader.nickname === user.nickname;
+            if (leaderBanner) {
+                if (!leader) {
+                    leaderBanner.textContent = 'No participants yet';
+                } else {
+                    leaderBanner.textContent = iAmLeader
+                        ? 'You are leading! Keep the pace!'
+                        : mode === 'routine'
+                        ? `👑 ${leader.nickname} is leading with ${leader.score || 0} pts!`
+                        : `👑 ${leader.nickname} is leading with ${Math.round((leader.rate || 0)*100)}% achieved!`;
+                }
+            }
+
+            // --- Tabs ---
+            tabButtons?.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    tabButtons.forEach(b => b.classList.toggle('active', b === btn));
+                    if (missionTab) missionTab.style.display = btn.dataset.tab === 'mission' ? 'flex' : 'none';
+                    if (feedTab) feedTab.style.display = btn.dataset.tab === 'feed' ? 'flex' : 'none';
+                    if (rankTab) rankTab.style.display = btn.dataset.tab === 'rank' ? 'flex' : 'none';
+                });
             });
-        });
 
-        // --- Mission Tab ---
-        const routineState = {
-            completed: mode === 'routine' && proofDone && proofDone.task,
-            todayPoints: proofDone?.task?.points || 0,
-            gap: iAmLeader ? 0 : Math.max(0, (leader.score || 0) - (participants.find(p=>p.nickname===user.nickname)?.score || 0)),
-        };
+            // --- Mission Tab ---
+            const routineState = {
+                completed: mode === 'routine' && proofDone && proofDone.task,
+                todayPoints: proofDone?.task?.points || 0,
+                gap: iAmLeader ? 0 : Math.max(0, (leader?.score || 0) - (participants.find(p=>p.nickname===user.nickname)?.score || 0)),
+            };
 
-        const oneDayState = {
-            tasks: (roomData.goals || []).map((g, idx) => ({ ...g, done: g.done || false, idx })),
-        };
+            const oneDayState = {
+                tasks: (roomData.goals || []).map((g, idx) => ({ ...g, done: g.done || false, idx })),
+            };
 
         // Apply completion from proof
         if (mode === 'oneday' && proofDone?.task?.idx !== undefined) {
@@ -108,13 +192,14 @@
             if (target) target.done = true;
         }
 
-        const triggerUpload = (payload) => {
-            localStorage.setItem('piggy-habit-proof', JSON.stringify({ task: payload, roomName, color, mode }));
-            window.location.href = 'upload.html';
-        };
+            const triggerUpload = (payload) => {
+                localStorage.setItem('piggy-habit-proof', JSON.stringify({ task: payload, roomName, color, mode }));
+                window.location.href = 'upload.html';
+            };
 
-        const renderRoutineMission = () => {
-            missionTab.innerHTML = '';
+            const renderRoutineMission = () => {
+                if (!missionTab) return;
+                missionTab.innerHTML = '';
 
             statusCard.innerHTML = `
                 <div style="font-weight:700;">Current rank focus</div>
@@ -145,8 +230,9 @@
             });
         };
 
-        const renderOneDayMission = () => {
-            missionTab.innerHTML = '';
+            const renderOneDayMission = () => {
+                if (!missionTab) return;
+                missionTab.innerHTML = '';
 
             const totalMinutes = oneDayState.tasks.reduce((sum, t) => sum + (t.minutes || 0), 0) || 1;
             const earned = oneDayState.tasks.filter(t => t.done).reduce((sum, t) => sum + (t.minutes || 0), 0);
@@ -234,22 +320,23 @@
             missionTab.appendChild(list);
         };
 
-        const formatTime = (minutes) => {
-            const h = Math.floor(minutes / 60);
-            const m = minutes % 60;
-            if (!h) return `${m} min`;
-            if (!m) return `${h} hr`;
-            return `${h} hr ${m} min`;
-        };
+            const formatTime = (minutes) => {
+                const h = Math.floor(minutes / 60);
+                const m = minutes % 60;
+                if (!h) return `${m} min`;
+                if (!m) return `${h} hr`;
+                return `${h} hr ${m} min`;
+            };
 
-        // --- Feed Tab ---
-        const feedData = (roomData.feed || [
+            // --- Feed Tab ---
+            const feedData = (roomData.feed || [
             { user: user.nickname, badge: 'Min', text: 'Drink water', time: 'Just now', img: '', hype: 2, sus: 0 },
             { user: 'Teammate', badge: '30m', text: 'Vocab 50 words', time: '5m ago', img: '', hype: 1, sus: 1 },
         ]).map(item => ({ ...item, flagged: false }));
 
-        const renderFeed = () => {
-            feedTab.innerHTML = '';
+            const renderFeed = () => {
+                if (!feedTab) return;
+                feedTab.innerHTML = '';
             feedData.forEach((cardData, idx) => {
                 const card = document.createElement('div');
                 const flagged = cardData.sus >= 2;
@@ -314,8 +401,9 @@
         };
 
         // --- Ranking Tab ---
-        const renderRanking = () => {
-            rankTab.innerHTML = '';
+            const renderRanking = () => {
+                if (!rankTab) return;
+                rankTab.innerHTML = '';
 
             const streak = mode === 'routine'
                 ? `🔥 Our room is on a ${roomData.duration || 1}-day streak!`
@@ -358,17 +446,20 @@
                     <strong>${score}</strong>
                 `;
                 rankTab.appendChild(item);
-            });
-        };
+                });
+            };
 
-        // Init
-        if (mode === 'routine') {
-            renderRoutineMission();
-        } else {
-            renderOneDayMission();
-        }
-        renderFeed();
-        renderRanking();
+            // Init
+            if (mode === 'routine') {
+                renderRoutineMission();
+            } else {
+                renderOneDayMission();
+            }
+            renderFeed();
+            renderRanking();
+            
+            console.log('Room page initialized successfully');
+        });
     </script>
 </body>
 </html>

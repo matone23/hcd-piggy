@@ -18,23 +18,111 @@
     </main>
 
     <div id="toast" role="status" aria-live="polite"></div>
-    <script src="js/app.js"></script>
-    <script>
-        app.requireUser();
-        const winnerTitle = document.getElementById('winnerTitle');
-        const winnerDesc = document.getElementById('winnerDesc');
-        const rematchBtn = document.getElementById('rematchBtn');
-        const room = JSON.parse(localStorage.getItem('piggy-habit-room') || '{}');
+    
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js';
+        import { getAuth } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js';
+        import { getFirestore } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
+        import { getDatabase } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js';
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyDA2c4ppqojUpSi090q7jyXSLR_8GTCXIw",
+            authDomain: "hcd-piggy.firebaseapp.com",
+            databaseURL: "https://hcd-piggy-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "hcd-piggy",
+            storageBucket: "hcd-piggy.firebasestorage.app",
+            messagingSenderId: "663289864346",
+            appId: "1:663289864346:web:8eba034298e5681d7b3f23"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const database = getDatabase(app);
+        
+        window.firebaseAuth = auth;
+        window.firebaseDb = db;
+        window.firebaseDatabase = database;
+        window.firebaseApp = app;
+    </script>
+    
+    <script type="module">
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('Result page DOM loaded');
+            
+            // Load app module
+            let app;
+            try {
+                const appModule = await import('./js/app.js');
+                app = appModule.default;
+                
+                // Initialize Firebase
+                await app.initializeFirebase();
+                console.log('Firebase ready in result:', app.isFirebaseReady());
+            } catch (error) {
+                console.error('Failed to load app module:', error);
+                return;
+            }
 
-        const winner = room.winner || room.owner || 'Top Player';
-        winnerTitle.textContent = `${winner} wins!`;
-        winnerDesc.textContent = 'Set up a new challenge and keep the streak.';
+            const user = app.requireUser();
+            const room = JSON.parse(localStorage.getItem('piggy-habit-room') || '{}');
+            console.log('Result room data:', room);
+            
+            const winnerTitle = document.getElementById('winnerTitle');
+            const winnerDesc = document.getElementById('winnerDesc');
+            const rematchBtn = document.getElementById('rematchBtn');
 
-        rematchBtn.addEventListener('click', () => {
-            app.showToast('Starting rematch...');
-            setTimeout(() => {
-                window.location.href = 'create.html';
-            }, 400);
+            console.log('Elements found:', { winnerTitle, winnerDesc, rematchBtn });
+
+            // Load winner data from Firebase if available
+            let winner = room.winner || room.owner || 'Top Player';
+            
+            if (app.isFirebaseReady() && room.id) {
+                try {
+                    const firebaseRoom = await app.getRoom(room.id);
+                    if (firebaseRoom && firebaseRoom.winner) {
+                        winner = firebaseRoom.winner;
+                        console.log('Loaded winner from Firebase:', winner);
+                    }
+                } catch (error) {
+                    console.warn('Failed to load winner from Firebase, using local data:', error);
+                }
+            }
+            
+            if (winnerTitle) {
+                winnerTitle.textContent = `${winner} wins!`;
+            }
+            if (winnerDesc) {
+                winnerDesc.textContent = 'Set up a new challenge and keep the streak.';
+            }
+
+            rematchBtn?.addEventListener('click', async () => {
+                console.log('Rematch button clicked');
+                
+                try {
+                    rematchBtn.disabled = true;
+                    rematchBtn.textContent = 'Starting...';
+                    
+                    app.showToast('Starting rematch...');
+                    
+                    // Clear old room data
+                    localStorage.removeItem('piggy-habit-room');
+                    localStorage.removeItem('piggy-habit-proof-done');
+                    
+                    setTimeout(() => {
+                        window.location.href = 'create.html';
+                    }, 400);
+                } catch (error) {
+                    console.error('Error starting rematch:', error);
+                    app.showToast('Failed to start rematch. Please try again.');
+                } finally {
+                    rematchBtn.disabled = false;
+                    rematchBtn.textContent = 'Rematch';
+                }
+            });
+            
+            console.log('Result page initialized successfully');
         });
     </script>
 </body>

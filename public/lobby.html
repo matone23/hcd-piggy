@@ -48,54 +48,162 @@
     </main>
 
     <div id="toast" role="status" aria-live="polite"></div>
-    <script src="js/app.js"></script>
-    <script>
-        const user = app.requireUser();
-        const greeting = document.getElementById('greeting');
-        const createBtn = document.getElementById('createBtn');
-        const joinBtn = document.getElementById('joinBtn');
-        const joinCode = document.getElementById('join-code');
-        const logoutBtn = document.getElementById('logoutBtn');
-        const activeRoom = app.getActiveRoom();
-
-        greeting.textContent = `Hi, ${user.nickname} 👋`;
-
-        createBtn.addEventListener('click', () => {
-            window.location.href = 'create.html';
-        });
-
-        joinBtn.addEventListener('click', () => {
-            const code = joinCode.value.trim();
-            if (!/^[0-9]{6}$/.test(code)) {
-                app.showToast('Enter a valid 6-digit code.');
-                joinCode.focus();
+    
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js';
+        import { getAuth } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js';
+        import { getFirestore } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
+        import { getDatabase } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js';
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyDA2c4ppqojUpSi090q7jyXSLR_8GTCXIw",
+            authDomain: "hcd-piggy.firebaseapp.com",
+            databaseURL: "https://hcd-piggy-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "hcd-piggy",
+            storageBucket: "hcd-piggy.firebasestorage.app",
+            messagingSenderId: "663289864346",
+            appId: "1:663289864346:web:8eba034298e5681d7b3f23"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const database = getDatabase(app);
+        
+        window.firebaseAuth = auth;
+        window.firebaseDb = db;
+        window.firebaseDatabase = database;
+        window.firebaseApp = app;
+    </script>
+    
+    
+    <script type="module">
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('Lobby DOM loaded');
+            
+            // Load app module
+            let app;
+            try {
+                const appModule = await import('./js/app.js');
+                app = appModule.default;
+                
+                // Initialize Firebase
+                await app.initializeFirebase();
+                console.log('Firebase ready in lobby:', app.isFirebaseReady());
+            } catch (error) {
+                console.error('Failed to load app module:', error);
                 return;
             }
-            app.showToast(`Joining room ${code}...`);
-            const draft = {
-                name: 'Joined Room',
-                mode: 'routine',
-                duration: 7,
-                joinCode: code,
-            };
-            localStorage.setItem('piggy-habit-draft', JSON.stringify(draft));
-            setTimeout(() => window.location.href = 'onboarding.html?type=routine', 400);
-        });
 
-        logoutBtn.addEventListener('click', () => {
-            app.clearUser();
-            app.showToast('Logged out');
-            setTimeout(() => window.location.href = 'index.html', 400);
-        });
+            const user = app.requireUser();
+            const greeting = document.getElementById('greeting');
+            const createBtn = document.getElementById('createBtn');
+            const joinBtn = document.getElementById('joinBtn');
+            const joinCode = document.getElementById('join-code');
+            const logoutBtn = document.getElementById('logoutBtn');
+            const activeRoom = app.getActiveRoom();
 
-        if (activeRoom) {
-            const resume = document.createElement('button');
-            resume.className = 'btn btn-primary';
-            resume.style.marginTop = '16px';
-            resume.textContent = 'Go to active room';
-            resume.addEventListener('click', () => window.location.href = 'room.html');
-            document.querySelector('main .stack').appendChild(resume);
-        }
+            if (greeting && user?.nickname) {
+                const firebaseStatus = app.isFirebaseReady() ? '🔥' : '📱';
+                greeting.textContent = `Hi, ${user.nickname} ${firebaseStatus}`;
+            }
+
+            createBtn?.addEventListener('click', () => {
+                window.location.href = 'create.html';
+            });
+
+            joinBtn?.addEventListener('click', async () => {
+                const code = joinCode?.value?.trim();
+                if (!code || !/^[0-9]{6}$/.test(code)) {
+                    app.showToast('Enter a valid 6-digit code.');
+                    joinCode?.focus();
+                    return;
+                }
+                
+                try {
+                    joinBtn.disabled = true;
+                    joinBtn.textContent = 'Joining...';
+                    
+                    await app.joinRoom(code);
+                    app.showToast(`Joined room ${code}!`);
+                    
+                    setTimeout(() => window.location.href = 'room.html', 400);
+                } catch (error) {
+                    console.error('Error joining room:', error);
+                    app.showToast('Failed to join room. Please try again.');
+                } finally {
+                    joinBtn.disabled = false;
+                    joinBtn.textContent = 'Join';
+                }
+            });
+
+            logoutBtn?.addEventListener('click', async () => {
+                try {
+                    await app.clearUser();
+                    app.showToast('Logged out');
+                    setTimeout(() => window.location.href = 'index.html', 400);
+                } catch (error) {
+                    console.error('Logout error:', error);
+                    app.showToast('Error logging out');
+                }
+            });
+
+            if (activeRoom) {
+                const resume = document.createElement('button');
+                resume.className = 'btn btn-primary';
+                resume.style.marginTop = '16px';
+                resume.textContent = 'Go to active room';
+                resume.addEventListener('click', () => window.location.href = 'room.html');
+                document.querySelector('main .stack')?.appendChild(resume);
+            }
+
+            // Load and display available rooms if Firebase is ready
+            if (app.isFirebaseReady()) {
+                try {
+                    const rooms = await app.getRooms();
+                    console.log('Available rooms:', rooms);
+                    
+                    if (rooms.length > 0) {
+                        const roomsList = document.createElement('div');
+                        roomsList.className = 'mt-16';
+                        roomsList.innerHTML = `
+                            <h3>Available Rooms</h3>
+                            <div class="stack mt-8">
+                                ${rooms.map(room => `
+                                    <div class="card" style="padding: 12px;">
+                                        <div class="between flex">
+                                            <div>
+                                                <strong>${room.name || 'Unnamed Room'}</strong>
+                                                <div class="muted">${room.members?.length || 0} members</div>
+                                            </div>
+                                            <button class="btn btn-outline btn-small" onclick="joinRoomById('${room.id}')">
+                                                Join
+                                            </button>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `;
+                        document.querySelector('main')?.appendChild(roomsList);
+                        
+                        // Make joinRoomById available globally
+                        window.joinRoomById = async (roomId) => {
+                            try {
+                                await app.joinRoom(roomId);
+                                app.showToast('Joined room!');
+                                setTimeout(() => window.location.href = 'room.html', 400);
+                            } catch (error) {
+                                console.error('Error joining room:', error);
+                                app.showToast('Failed to join room');
+                            }
+                        };
+                    }
+                } catch (error) {
+                    console.error('Error loading rooms:', error);
+                }
+            }
+        });
     </script>
 </body>
 </html>

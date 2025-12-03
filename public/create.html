@@ -53,72 +53,165 @@
     </main>
 
     <div id="toast" role="status" aria-live="polite"></div>
-    <script src="js/app.js"></script>
-    <script>
-        const user = app.requireUser();
-        const modeChips = document.querySelectorAll('#mode-chips .chip');
-        const durationChips = document.querySelectorAll('#duration-chips .chip');
-        const routineOptions = document.getElementById('routine-options');
-        const onedayOptions = document.getElementById('oneday-options');
-        const nextBtn = document.getElementById('nextBtn');
-        const roomName = document.getElementById('room-name');
-        const dday = document.getElementById('dday');
-
-        dday.valueAsDate = new Date();
-
-        let formState = {
-            mode: 'routine',
-            duration: 3,
-            dday: dday.value
+    
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js';
+        import { getAuth } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js';
+        import { getFirestore } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
+        import { getDatabase } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js';
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyDA2c4ppqojUpSi090q7jyXSLR_8GTCXIw",
+            authDomain: "hcd-piggy.firebaseapp.com",
+            databaseURL: "https://hcd-piggy-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "hcd-piggy",
+            storageBucket: "hcd-piggy.firebasestorage.app",
+            messagingSenderId: "663289864346",
+            appId: "1:663289864346:web:8eba034298e5681d7b3f23"
         };
-
-        const setActive = (nodeList, target) => {
-            nodeList.forEach(el => el.classList.toggle('active', el === target));
-        };
-
-        modeChips.forEach(chip => {
-            chip.addEventListener('click', () => {
-                formState.mode = chip.dataset.mode;
-                setActive(modeChips, chip);
-                if (formState.mode === 'routine') {
-                    routineOptions.style.display = 'block';
-                    onedayOptions.style.display = 'none';
-                } else {
-                    routineOptions.style.display = 'none';
-                    onedayOptions.style.display = 'block';
-                }
-            });
-        });
-
-        durationChips.forEach(chip => {
-            chip.addEventListener('click', () => {
-                formState.duration = Number(chip.dataset.days);
-                setActive(durationChips, chip);
-            });
-        });
-
-        dday.addEventListener('change', () => {
-            formState.dday = dday.value;
-        });
-
-        nextBtn.addEventListener('click', () => {
-            const name = roomName.value.trim();
-            if (!name) {
-                app.showToast('Enter a room name.');
-                roomName.focus();
+        
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const database = getDatabase(app);
+        
+        window.firebaseAuth = auth;
+        window.firebaseDb = db;
+        window.firebaseDatabase = database;
+        window.firebaseApp = app;
+    </script>
+    
+    
+    <script type="module">
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('Create page DOM loaded');
+            
+            // Load app module
+            let app;
+            try {
+                const appModule = await import('./js/app.js');
+                app = appModule.default;
+                
+                // Initialize Firebase
+                await app.initializeFirebase();
+                console.log('Firebase ready in create page:', app.isFirebaseReady());
+            } catch (error) {
+                console.error('Failed to load app module:', error);
                 return;
             }
 
-            const draft = {
-                owner: user.nickname,
-                name,
-                mode: formState.mode,
-                duration: formState.duration,
-                dday: formState.dday || dday.value
+            const user = app.requireUser();
+            const modeChips = document.querySelectorAll('#mode-chips .chip');
+            const durationChips = document.querySelectorAll('#duration-chips .chip');
+            const routineOptions = document.getElementById('routine-options');
+            const onedayOptions = document.getElementById('oneday-options');
+            const nextBtn = document.getElementById('nextBtn');
+            const roomName = document.getElementById('room-name');
+            const dday = document.getElementById('dday');
+
+            console.log('Elements found:', { modeChips, durationChips, nextBtn, roomName });
+
+            if (dday) {
+                dday.valueAsDate = new Date();
+            }
+
+            let formState = {
+                mode: 'routine',
+                duration: 3,
+                dday: dday?.value || new Date().toISOString().split('T')[0]
             };
 
-            localStorage.setItem('piggy-habit-draft', JSON.stringify(draft));
-            window.location.href = `onboarding.html?type=${formState.mode}`;
+            console.log('Initial form state:', formState);
+
+            const setActive = (nodeList, target) => {
+                nodeList.forEach(el => el.classList.toggle('active', el === target));
+            };
+
+            modeChips.forEach(chip => {
+                chip.addEventListener('click', () => {
+                    console.log('Mode chip clicked:', chip.dataset.mode);
+                    formState.mode = chip.dataset.mode;
+                    setActive(modeChips, chip);
+                    if (formState.mode === 'routine') {
+                        if (routineOptions) routineOptions.style.display = 'block';
+                        if (onedayOptions) onedayOptions.style.display = 'none';
+                    } else {
+                        if (routineOptions) routineOptions.style.display = 'none';
+                        if (onedayOptions) onedayOptions.style.display = 'block';
+                    }
+                });
+            });
+
+            durationChips.forEach(chip => {
+                chip.addEventListener('click', () => {
+                    console.log('Duration chip clicked:', chip.dataset.days);
+                    formState.duration = Number(chip.dataset.days);
+                    setActive(durationChips, chip);
+                });
+            });
+
+            if (dday) {
+                dday.addEventListener('change', () => {
+                    formState.dday = dday.value;
+                    console.log('D-day changed:', formState.dday);
+                });
+            }
+
+            nextBtn?.addEventListener('click', async () => {
+                console.log('Next button clicked');
+                const name = roomName?.value?.trim();
+                if (!name) {
+                    app.showToast('Enter a room name.');
+                    roomName?.focus();
+                    return;
+                }
+
+                try {
+                    nextBtn.disabled = true;
+                    nextBtn.textContent = 'Creating Room...';
+                    
+                    const roomData = {
+                        name,
+                        description: `${formState.mode} room for ${formState.duration} days`,
+                        mode: formState.mode,
+                        duration: formState.duration,
+                        dday: formState.dday,
+                        owner: user.nickname
+                    };
+
+                    console.log('Creating room with data:', roomData);
+                    
+                    // Create room using Firebase
+                    const room = await app.createRoom(roomData);
+                    console.log('Room created:', room);
+                    
+                    app.showToast(`Room "${name}" created!`);
+                    
+                    // Save draft for onboarding
+                    const draft = {
+                        owner: user.nickname,
+                        name,
+                        mode: formState.mode,
+                        duration: formState.duration,
+                        dday: formState.dday || dday?.value
+                    };
+                    
+                    localStorage.setItem('piggy-habit-draft', JSON.stringify(draft));
+                    
+                    setTimeout(() => {
+                        window.location.href = `onboarding.html?type=${formState.mode}`;
+                    }, 500);
+                } catch (error) {
+                    console.error('Error creating room:', error);
+                    app.showToast('Failed to create room. Please try again.');
+                } finally {
+                    nextBtn.disabled = false;
+                    nextBtn.textContent = 'Next: Pledge';
+                }
+            });
+
+            console.log('Create page initialized successfully');
         });
     </script>
 </body>
