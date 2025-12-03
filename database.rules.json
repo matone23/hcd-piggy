@@ -1,0 +1,23 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid"
+      }
+    },
+    "rooms": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$roomId": {
+        ".validate": "newData.hasChildren(['name', 'createdBy', 'createdAt', 'members', 'isActive'])",
+        "createdBy": {
+          ".validate": "newData.val() === auth.uid"
+        },
+        "members": {
+          ".validate": "newData.isString() || newData.hasChildren()"
+        }
+      }
+    }
+  }
+}

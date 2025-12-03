@@ -1,0 +1,27 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can read and write their own user document
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Authenticated users can read and write rooms
+    match /rooms/{roomId} {
+      allow read, write: if request.auth != null;
+      allow create: if request.auth != null 
+        && request.resource.data.createdBy == request.auth.uid;
+    }
+    
+    // Authenticated users can read and write habits within rooms they're members of
+    match /rooms/{roomId}/habits/{habitId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Authenticated users can read and write progress within rooms they're members of
+    match /rooms/{roomId}/progress/{progressId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
