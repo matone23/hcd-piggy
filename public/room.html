@@ -38,6 +38,16 @@
             </div>
         </div>
 
+        <!-- Quit Competition Early Section (for testing) -->
+        <div class="card" style="margin-bottom: 12px; padding: 12px; background: #fff3cd; border: 1px solid #ffeaa7;">
+            <div style="text-align: center;">
+                <div style="font-size: 12px; color: #856404; margin-bottom: 8px;">Testing Mode</div>
+                <button id="quitEarlyBtn" class="btn btn-outline btn-small" style="font-size: 12px; padding: 6px 12px; background: #fff3cd; color: #856404; border-color: #ffeaa7;">
+                    ⚠️ Quit Competition Early
+                </button>
+            </div>
+        </div>
+
         <div class="tab-bar">
             <div class="tab active" data-tab="mission">🔥 My Mission</div>
             <div class="tab" data-tab="feed">👀 Feed</div>
@@ -155,29 +165,101 @@
             // Set basic UI elements immediately
             document.title = `Piggy Habit | ${roomName}`;
             
-            // Check onboarding status from cache first
-            let hasCompletedOnboarding = roomData.goals && roomData.color && roomData.onboardingComplete;
+            // Initialize UI with cached data first
+            let participants = [];
+            
+            // Load room participants from cached data for initial UI
+            if (roomData && roomData.participants) {
+                participants = Object.values(roomData.participants);
+            }
+            
+            // Check onboarding status - load fresh data from Firebase to avoid loop
+            let hasCompletedOnboarding = false;
+            
+            try {
+                // Try to get fresh data from Firebase for onboarding check
+                if (app.isFirebaseReady() && roomData.id) {
+                    console.log('🔍 Loading fresh Firebase data for onboarding check...');
+                    const freshRoomData = await app.getRoom(roomData.id);
+                    
+                    if (freshRoomData && freshRoomData.participants) {
+                        const freshParticipants = Object.values(freshRoomData.participants);
+                        const cachedUser = app.getUser();
+                        const userId = app?.getCurrentUser()?.uid || cachedUser?.userId;
+                        
+                        const userParticipant = freshParticipants.find(p => 
+                            p.userId === userId || p.nickname === cachedUser?.nickname
+                        );
+                        
+                        console.log('🔍 Onboarding check for user:', {
+                            userId,
+                            nickname: cachedUser?.nickname,
+                            userParticipant: userParticipant ? {
+                                userId: userParticipant.userId,
+                                nickname: userParticipant.nickname,
+                                hasGoals: !!userParticipant.goals,
+                                hasColor: !!userParticipant.color,
+                                onboardingComplete: userParticipant.onboardingComplete
+                            } : null
+                        });
+                        
+                        hasCompletedOnboarding = userParticipant && 
+                                               userParticipant.goals && 
+                                               userParticipant.goals.length > 0 && 
+                                               userParticipant.color && 
+                                               userParticipant.onboardingComplete;
+                                               
+                        // Update local data with fresh data
+                        if (freshRoomData) {
+                            roomData = { ...roomData, ...freshRoomData };
+                            participants = freshParticipants;
+                        }
+                    }
+                }
+                
+                // Fallback to cached data check if Firebase fails
+                if (!hasCompletedOnboarding) {
+                    const cachedUser = app.getUser();
+                    const userId = app?.getCurrentUser()?.uid || cachedUser?.userId;
+                    
+                    const userParticipantFromCache = participants.find(p => 
+                        p.userId === userId || p.nickname === cachedUser?.nickname
+                    );
+                    
+                    hasCompletedOnboarding = userParticipantFromCache && 
+                                           userParticipantFromCache.goals && 
+                                           userParticipantFromCache.goals.length > 0 && 
+                                           userParticipantFromCache.color && 
+                                           userParticipantFromCache.onboardingComplete;
+                }
+                
+            } catch (error) {
+                console.warn('Failed to check onboarding status from Firebase:', error);
+                // Use cached data as fallback
+            }
+            
+            console.log('🎯 Final onboarding status:', hasCompletedOnboarding);
             
             if (!hasCompletedOnboarding) {
                 console.log('User has not completed onboarding, redirecting');
                 window.location.href = `onboarding.html?type=${mode}`;
                 return;
             }
-            
-            // Initialize UI with cached data first
-            let participants = [];
-            
             // Load fresh data from Firebase asynchronously (non-blocking)
             const loadFirebaseData = async () => {
+                const startTime = Date.now();
                 if (!app.isFirebaseReady() || !roomData.id) return;
                 
                 try {
                     const firebaseRoom = await app.getRoom(roomData.id);
+                    const loadTime = Date.now() - startTime;
+                    
                     if (firebaseRoom) {
                         console.log('🔄 Loading fresh Firebase data:', {
                             participants: Object.keys(firebaseRoom.participants || {}).length,
                             submissions: Object.keys(firebaseRoom.submissions || {}).length,
-                            roomId: roomData.id
+                            roomId: roomData.id,
+                            loadTime: `${loadTime}ms`
                         });
                         
                         // Update room data completely
@@ -187,7 +269,7 @@
                         // Update participants from Firebase
                         if (firebaseRoom.participants) {
                             participants = Object.values(firebaseRoom.participants);
-                            console.log('👥 Updated participants:', participants.map(p => ({nickname: p.nickname, score: p.score})));
+                            console.log('👥 Updated participants:', participants.map(p => ({nickname: p.nickname, points: 'calculated'})));
                         }
                         
                         // Update UI with fresh data
@@ -198,9 +280,13 @@
                         
                         // Save essential data (non-blocking)
                         setTimeout(() => saveEssentialData(roomData), 0);
+                        
+                        const totalTime = Date.now() - startTime;
+                        console.log(`✅ Firebase data load completed in ${totalTime}ms`);
                     }
                 } catch (error) {
-                    console.warn('Failed to load Firebase data:', error);
+                    const errorTime = Date.now() - startTime;
+                    console.warn(`❌ Failed to load Firebase data after ${errorTime}ms:`, error);
                 }
             };
             
@@ -236,8 +322,8 @@
                         if (updatedRoomData.participants) {
                             const newParticipants = Object.values(updatedRoomData.participants);
                             const participantsChanged = newParticipants.length !== participants.length || 
-                                JSON.stringify(newParticipants.map(p => ({id: p.userId, score: p.score}))) !== 
-                                JSON.stringify(participants.map(p => ({id: p.userId, score: p.score})));
+                                JSON.stringify(newParticipants.map(p => ({id: p.userId, nickname: p.nickname}))) !== 
+                                JSON.stringify(participants.map(p => ({id: p.userId, nickname: p.nickname})));
                             
                             if (participantsChanged) {
                                 console.log('👥 Participants changed, updating UI');
@@ -285,7 +371,7 @@
                     } else if (leader) {
                         leaderBanner.textContent = iAmLeader
                             ? 'You are leading! Keep the pace!'
-                            : `👑 ${leader.nickname} is leading with ${leader.score || 0} pts!`;
+                            : `👑 ${leader.nickname} is leading with ${leader.calculatedPoints || 0} pts!`;
                     } else {
                         leaderBanner.textContent = `${participants.length} participants in room`;
                     }
@@ -294,16 +380,27 @@
             
             const getLeader = () => {
                 if (participants.length <= 1) return null;
-                const sorted = participants.slice().sort((a,b)=>(b.score||0)-(a.score||0));
-                const topScore = sorted[0].score || 0;
-                const hasCompetition = topScore > 0 && sorted.some(p => (p.score || 0) < topScore);
+                
+                // Calculate actual points from submissions for each participant
+                const participantsWithPoints = participants.map(p => {
+                    const userSubmissions = Object.values(roomData.submissions || {}).filter(s => 
+                        s.userId === p.userId && s.status === 'approved'
+                    );
+                    const calculatedPoints = userSubmissions.reduce((total, sub) => {
+                        return total + (sub.task?.points || 10);
+                    }, 0);
+                    return { ...p, calculatedPoints };
+                });
+                
+                const sorted = participantsWithPoints.slice().sort((a,b) => b.calculatedPoints - a.calculatedPoints);
+                const topScore = sorted[0].calculatedPoints || 0;
+                const hasCompetition = topScore > 0 && sorted.some(p => p.calculatedPoints < topScore);
                 return hasCompetition ? sorted[0] : null;
             };
             
             const refreshRanking = () => {
-                if (rankTab && rankTab.style.display !== 'none') {
-                    renderRanking();
-                }
+                // Always update ranking data for real-time updates
+                renderRanking();
             };
             
             const updateFeed = () => {
@@ -318,7 +415,16 @@
             };
 
             // Update focus box with current room status
+            let lastFocusBoxUpdate = 0;
             const updateFocusBox = () => {
+                // Prevent too frequent updates (max once per 100ms)
+                const now = Date.now();
+                if (now - lastFocusBoxUpdate < 100) {
+                    console.log('⚠️ Skipping focus box update - too frequent');
+                    return;
+                }
+                lastFocusBoxUpdate = now;
+                
                 // Use local roomData if window.roomData is not available
                 const currentRoomData = window.roomData || roomData;
                 
@@ -332,6 +438,11 @@
                 const submissions = Object.values(currentRoomData.submissions || {});
                 const currentUserId = app?.getCurrentUser()?.uid || user?.userId;
                 
+                if (!participants.length) {
+                    console.log('⚠️ No participants found, skipping focus box update');
+                    return;
+                }
+                
                 console.log('📊 Focus box data:', {
                     participants: participants.length,
                     submissions: submissions.length,
@@ -343,7 +454,31 @@
                     const userSubmissions = submissions.filter(s => 
                         s.userId === p.userId && s.status === 'approved'
                     );
-                    const points = userSubmissions.length * 10; // 10 points per approved submission
+                    // Use actual task points, not hardcoded 10
+                    const points = userSubmissions.reduce((total, sub) => {
+                        const taskPoints = sub.task?.points || 10;
+                        console.log(`🔥 Task points for ${p.nickname}:`, {
+                            submissionId: sub.id || 'no-id',
+                            taskData: sub.task,
+                            taskPoints,
+                            hasTask: !!sub.task
+                        });
+                        return total + taskPoints; // fallback to 10 if no task points
+                    }, 0);
+                    
+                    console.log(`🔍 Focus box calculation for ${p.nickname}:`, {
+                        userId: p.userId,
+                        totalSubmissions: submissions.filter(s => s.userId === p.userId).length,
+                        approvedSubmissions: userSubmissions.length,
+                        calculatedPoints: points,
+                        submissionPoints: userSubmissions.map(s => ({ 
+                            taskPoints: s.task?.points || 10, 
+                            taskLabel: s.task?.label || 'Unknown',
+                            fullTask: s.task 
+                        })),
+                        submissionIds: userSubmissions.map(s => s.id || 'no-id')
+                    });
+                    
                     return { ...p, points, submissionCount: userSubmissions.length };
                 });
                 
@@ -360,7 +495,10 @@
                     s.status === 'approved' &&
                     new Date(s.submittedAt).toDateString() === today
                 );
-                const todayPoints = todaySubmissions.length * 10;
+                // Use actual task points for today's total
+                const todayPoints = todaySubmissions.reduce((total, sub) => {
+                    return total + (sub.task?.points || 10);
+                }, 0);
                 
                 // Calculate day progress
                 const startDate = new Date(currentRoomData.createdAt || Date.now());
@@ -423,7 +561,7 @@
                     participants: participants.map(p => ({
                         nickname: p.nickname,
                         userId: p.userId,
-                        score: p.score || 0
+                        points: 'calculated'
                     }))
                 });
             } else {
@@ -431,7 +569,7 @@
                 participants = [{ 
                     userId: fbUserId,
                     nickname: user.nickname, 
-                    score: 0, 
+                    score: 0, // Will be calculated from submissions
                     rate: 0.0, 
                     color 
                 }];
@@ -503,29 +641,41 @@
                     tabButtons.forEach(b => b.classList.toggle('active', b === btn));
                     if (missionTab) missionTab.style.display = btn.dataset.tab === 'mission' ? 'flex' : 'none';
                     if (feedTab) feedTab.style.display = btn.dataset.tab === 'feed' ? 'flex' : 'none';
-                    if (rankTab) rankTab.style.display = btn.dataset.tab === 'rank' ? 'flex' : 'none';
+                    if (rankTab) {
+                        rankTab.style.display = btn.dataset.tab === 'rank' ? 'flex' : 'none';
+                        // Refresh ranking when tab becomes visible
+                        if (btn.dataset.tab === 'rank') {
+                            refreshRanking();
+                        }
+                    }
                 });
             });
 
             // --- Mission Tab ---
-            // Get goals from current user's participant data, not room data
+            // Only use participant-specific goals, never room goals
             let goals = null;
             const currentUserParticipant = participants.find(p => 
                 p.userId === (app.getCurrentUser()?.uid || user.userId) || 
                 p.nickname === user.nickname
             );
             
-            if (currentUserParticipant && currentUserParticipant.goals) {
+            if (currentUserParticipant && currentUserParticipant.goals && currentUserParticipant.goals.length > 0) {
                 goals = currentUserParticipant.goals;
-                console.log('Using participant-specific goals:', goals);
+                console.log('✅ Using participant-specific goals for', currentUserParticipant.nickname, ':', goals);
             } else {
-                // Fallback to room goals or default
-                goals = roomData.goals || [
+                // Only use default goals if participant has no goals set
+                goals = [
                     { label: 'Min', desc: 'Basic goal', points: 2 },
                     { label: 'More', desc: 'Regular goal', points: 5 },
                     { label: 'Max', desc: 'Stretch goal', points: 10 },
                 ];
-                console.log('Using fallback goals:', goals);
+                console.log('⚠️ No participant-specific goals found, using default goals');
+                console.log('Debug info:', {
+                    currentUserParticipant: currentUserParticipant ? { userId: currentUserParticipant.userId, nickname: currentUserParticipant.nickname, hasGoals: !!currentUserParticipant.goals } : null,
+                    allParticipants: participants.map(p => ({ userId: p.userId, nickname: p.nickname, hasGoals: !!p.goals })),
+                    searchUserId: app.getCurrentUser()?.uid || user.userId,
+                    searchNickname: user.nickname
+                });
             }
             
             // Check user's submission status for today
@@ -543,16 +693,24 @@
             const latestSubmission = todaySubmissions.length > 0 ? 
                 todaySubmissions[todaySubmissions.length - 1] : null;
             
-            // Calculate leader status
+            // Calculate leader status and current user points
             const leader = getLeader();
             const iAmLeader = leader && leader.nickname === user.nickname;
+            
+            // Calculate current user's points the same way as leader calculation
+            const currentUserSubmissions = Object.values(roomData.submissions || {}).filter(s => 
+                s.userId === currentUserId && s.status === 'approved'
+            );
+            const currentUserPoints = currentUserSubmissions.reduce((total, sub) => {
+                return total + (sub.task?.points || 10);
+            }, 0);
                 
             const routineState = {
                 completed: latestSubmission?.status === 'approved',
                 pending: latestSubmission?.status === 'pending',
                 rejected: latestSubmission?.status === 'rejected',
                 todayPoints: latestSubmission?.status === 'approved' ? (latestSubmission.task?.points || 0) : 0,
-                gap: iAmLeader ? 0 : Math.max(0, (leader?.score || 0) - (participants.find(p=>p.nickname===user.nickname)?.score || 0)),
+                gap: iAmLeader ? 0 : Math.max(0, (leader?.calculatedPoints || 0) - currentUserPoints),
             };
 
             const oneDayState = {
@@ -1217,8 +1375,22 @@
 
         // --- Ranking Tab ---
             const renderRanking = () => {
-                if (!rankTab) return;
-                rankTab.innerHTML = '';
+                if (!rankTab) {
+                    console.warn('⚠️ Ranking tab not found');
+                    return;
+                }
+                
+                rankTab.innerHTML = ''; // Clear existing content
+                
+                if (!participants || participants.length === 0) {
+                    rankTab.innerHTML = '<div class="muted" style="text-align: center; padding: 20px;">No participants yet</div>';
+                    return;
+                }
+                
+                if (!roomData || !roomData.submissions) {
+                    rankTab.innerHTML = '<div class="muted" style="text-align: center; padding: 20px;">Loading submission data...</div>';
+                    return;
+                }
                 
                 console.log('🏆 RENDERING RANKING:', {
                     participantCount: participants.length,
@@ -1287,8 +1459,29 @@
             streakRow.textContent = streak;
             rankTab.appendChild(streakRow);
 
-            const sorted = participants.slice().sort((a,b) => {
-                if (mode === 'routine') return b.score - a.score;
+            const sorted = participants.slice().map(p => {
+                // Calculate actual points from approved submissions using task points
+                const userSubmissions = Object.values(roomData.submissions || {}).filter(s => 
+                    s.userId === p.userId && s.status === 'approved'
+                );
+                // Use actual task points, not hardcoded 10
+                const calculatedPoints = userSubmissions.reduce((total, sub) => {
+                    return total + (sub.task?.points || 10); // fallback to 10 if no task points
+                }, 0);
+                
+                console.log(`📊 Ranking calculation for ${p.nickname}:`, {
+                    userId: p.userId,
+                    totalSubmissions: Object.values(roomData.submissions || {}).filter(s => s.userId === p.userId).length,
+                    approvedSubmissions: userSubmissions.length,
+                    calculatedPoints,
+                    storedScore: p.score || 0,
+                    submissionPoints: userSubmissions.map(s => ({ taskPoints: s.task?.points || 10, taskLabel: s.task?.label || 'Unknown' })),
+                    submissionIds: userSubmissions.map(s => s.id || 'no-id')
+                });
+                
+                return { ...p, points: calculatedPoints, submissionCount: userSubmissions.length };
+            }).sort((a,b) => {
+                if (mode === 'routine') return b.points - a.points; // Use calculated points instead of stored score
                 if (b.rate === a.rate) return 0;
                 return b.rate - a.rate;
             });
@@ -1336,7 +1529,7 @@
                 }
 
                 const score = mode === 'routine'
-                    ? `${row.score || 0} pts`
+                    ? `${row.points || 0} pts`
                     : `${Math.round((row.rate || 0)*100)}%`;
 
                 item.innerHTML = `
@@ -1378,25 +1571,68 @@
             console.log('Room page initialized successfully');
             
             // Auto-refresh data every 30 seconds for real-time updates
-            setInterval(async () => {
-                if (app.isFirebaseReady()) {
-                    console.log('🔄 Auto-refreshing Firebase data');
-                    await loadFirebaseData();
-                }
-            }, 30000);
+            let autoRefreshInterval;
+            let windowFocusListener;
             
-            // Also refresh when window gets focus (user comes back to tab)
-            window.addEventListener('focus', async () => {
-                if (app.isFirebaseReady()) {
-                    console.log('🔄 Window focus refresh');
-                    await loadFirebaseData();
+            const setupAutoRefresh = () => {
+                // Clear existing interval if any
+                if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+                
+                // Reduced frequency from 30s to 60s to improve performance
+                autoRefreshInterval = setInterval(async () => {
+                    if (app.isFirebaseReady()) {
+                        console.log('🔄 Auto-refreshing Firebase data (60s interval)');
+                        try {
+                            await loadFirebaseData();
+                        } catch (error) {
+                            console.warn('Auto-refresh failed:', error.message);
+                        }
+                    }
+                }, 60000); // Changed from 30000 to 60000 (1 minute)
+            };
+            
+            const setupWindowFocusRefresh = () => {
+                // Remove existing listener if any
+                if (windowFocusListener) {
+                    window.removeEventListener('focus', windowFocusListener);
                 }
+                
+                windowFocusListener = async () => {
+                    if (app.isFirebaseReady()) {
+                        console.log('🔄 Window focus refresh');
+                        try {
+                            await loadFirebaseData();
+                        } catch (error) {
+                            console.warn('Focus refresh failed:', error.message);
+                        }
+                    }
+                };
+                
+                window.addEventListener('focus', windowFocusListener);
+            };
+            
+            // Setup auto-refresh - reduce frequency to improve performance
+            setupAutoRefresh();
+            setupWindowFocusRefresh();
+            
+            // Cleanup on page unload
+            window.addEventListener('beforeunload', () => {
+                if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+                if (windowFocusListener) window.removeEventListener('focus', windowFocusListener);
             });
+            
+            // Add performance logging
+            console.log('🚀 Room setup complete, checking Firebase performance...');
             
             // Handle result button display
             const resultContainer = document.getElementById('resultButtonContainer');
             if (resultContainer) {
                 const isCompetitionEnded = (() => {
+                    // Check if competition was manually ended
+                    if (roomData.manuallyEnded) {
+                        return true;
+                    }
+                    
                     if (mode === 'routine') {
                         // Calculate if routine duration has been completed
                         const startDate = new Date(roomData.createdAt || Date.now());
@@ -1424,6 +1660,98 @@
                     resultContainer.innerHTML = '<div class="muted" style="font-size: 12px;">Results available when competition ends</div>';
                 }
             }
+            
+            // Quit Competition Early functionality - setup inside the main scope where all variables are accessible
+            const setupQuitButton = () => {
+                const quitBtn = document.getElementById('quitEarlyBtn');
+                if (quitBtn) {
+                    console.log('✅ Quit button found and setting up event listener');
+                    console.log('🔍 App availability check:', {
+                        appExists: !!app,
+                        appMethods: app ? Object.keys(app) : 'app is undefined',
+                        showToast: app ? typeof app.showToast : 'no app'
+                    });
+                    
+                    quitBtn.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        console.log('🚨 Quit button clicked!');
+                        
+                        // Check if app is available
+                        if (!app) {
+                            console.error('❌ App not available!');
+                            alert('Error: Application not ready. Please refresh the page.');
+                            return;
+                        }
+                        
+                        // Show immediate feedback
+                        app.showToast('Processing quit request...');
+                        
+                        if (confirm('Are you sure you want to end this competition early? This action cannot be undone.')) {
+                            try {
+                                console.log('✅ User confirmed quit, starting process...');
+                                
+                                // Immediate UI feedback
+                                quitBtn.disabled = true;
+                                quitBtn.textContent = '⏳ Ending...';
+                                quitBtn.style.background = '#ffc107';
+                                quitBtn.style.color = '#212529';
+                                
+                                // Show processing toast
+                                app.showToast('Calculating final results...');
+                                
+                                // Calculate final results using the getLeader function that's in scope
+                                console.log('📊 Calculating leader...');
+                                const leader = getLeader();
+                                console.log('🏆 Leader calculated:', leader);
+                                
+                                const finalResults = {
+                                    manuallyEnded: true,
+                                    endedAt: Date.now(),
+                                    endedBy: user?.nickname || 'Unknown',
+                                    winner: leader ? {
+                                        nickname: leader.nickname,
+                                        userId: leader.userId,
+                                        points: leader.calculatedPoints || 0
+                                    } : null
+                                };
+                                
+                                console.log('📝 Final results prepared:', finalResults);
+                                app.showToast('Saving results to database...');
+                                
+                                // Update room using the app's Firebase methods with roomData.id (which is available in scope)
+                                console.log('🔄 Updating room in Firebase:', roomData.id);
+                                await app.updateRoom(roomData.id, finalResults);
+                                console.log('✅ Room updated successfully');
+                                
+                                // Show success message and redirect
+                                app.showToast('Competition ended successfully! Redirecting...');
+                                
+                                // Immediate redirect without delay
+                                console.log('🔄 Redirecting to results page...');
+                                window.location.href = 'result.html';
+                                
+                            } catch (error) {
+                                console.error('❌ Error ending competition:', error);
+                                app.showToast(`Failed to end competition: ${error.message}`);
+                                
+                                // Reset button state
+                                quitBtn.disabled = false;
+                                quitBtn.textContent = '⚠️ Quit Competition Early';
+                                quitBtn.style.background = '#fff3cd';
+                                quitBtn.style.color = '#856404';
+                            }
+                        } else {
+                            console.log('❌ User cancelled quit');
+                            app.showToast('Competition quit cancelled');
+                        }
+                    });
+                } else {
+                    console.error('❌ Quit button not found!');
+                }
+            };
+            
+            // Setup quit button after everything is initialized
+            setupQuitButton();
         });
     </script>
 </body>

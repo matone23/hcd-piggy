@@ -142,22 +142,41 @@
                     startBtn.disabled = true;
                     startBtn.textContent = 'Checking Account...';
                     console.log('Starting authentication process...');
+                    
+                    // Make sure Firebase is ready before proceeding
+                    const firebaseStatus = app.isFirebaseReady();
+                    console.log('Firebase status:', firebaseStatus);
+                    
+                    if (!firebaseStatus.isReady) {
+                        console.log('⏳ Firebase not ready, waiting...');
+                        startBtn.textContent = 'Connecting to Firebase...';
+                        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait a bit
+                        
+                        // Check again
+                        const retryStatus = app.isFirebaseReady();
+                        console.log('Retry Firebase status:', retryStatus);
+                        
+                        if (!retryStatus.isReady) {
+                            throw new Error('Could not connect to Firebase. Please check your internet connection and try again.');
+                        }
+                    }
 
                     // First, try to authenticate with existing credentials
+                    console.log('🔍 Attempting to authenticate existing user...');
                     const existingUser = await app.authenticateUser(payload);
                     
                     if (existingUser) {
-                        console.log('✅ Existing user authenticated:', existingUser.nickname);
+                        console.log('✅ EXISTING USER AUTHENTICATED:', existingUser.nickname);
                         app.showToast(`Welcome back, ${existingUser.nickname}!`);
                         
                         // Check if they have an active room
                         const activeRoom = app.getActiveRoom();
+                        console.log('Active room check:', activeRoom);
                         window.location.href = activeRoom ? 'room.html' : 'lobby.html';
                         return;
                     }
                     
-                    // No existing user found, create a new one
-                    console.log('Creating new user account...');
+                    console.log('❌ No existing user found, creating new account...');
                     startBtn.textContent = 'Creating Account...';
                     
                     const userId = app.generateId();

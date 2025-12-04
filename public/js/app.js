@@ -81,7 +81,7 @@ const app = (() => {
 
     // User management with Firebase integration
     const authenticateUser = async ({ nickname, pin }) => {
-        console.log('authenticateUser called with:', { nickname, pin: '****' });
+        console.log('🔐 authenticateUser called with:', { nickname, pin: '****' });
         
         if (isFirebaseReady && database) {
             try {
@@ -92,44 +92,65 @@ const app = (() => {
                 
                 if (snapshot.exists()) {
                     const existingUsers = snapshot.val();
+                    console.log('📊 Found existing users in database:', Object.keys(existingUsers).length);
+                    console.log('📋 All users in database:', Object.entries(existingUsers).map(([uid, user]) => ({
+                        uid,
+                        nickname: user?.nickname,
+                        hasPin: !!user?.pin,
+                        pinPrefix: user?.pin ? user.pin.substring(0, 2) + '**' : 'NO PIN'
+                    })));
                     
                     // Look for user with matching nickname and PIN
                     for (const [uid, user] of Object.entries(existingUsers)) {
-                        if (user && user.nickname && user.pin &&
-                            user.nickname.toLowerCase() === nickname.toLowerCase() && 
-                            user.pin === pin) {
-                            console.log('✅ Found existing user:', user.nickname);
+                        if (user && user.nickname && user.pin) {
+                            console.log(`🔍 Checking user: ${user.nickname} with PIN ${user.pin.substring(0, 2)}** against ${nickname} with PIN ${pin.substring(0, 2)}**`);
                             
-                            // Update localStorage with existing user
-                            localStorage.setItem(STORAGE_KEY, JSON.stringify({ 
-                                userId: uid, 
-                                nickname: user.nickname, 
-                                pin: user.pin 
-                            }));
+                            const nicknameMatch = user.nickname.toLowerCase() === nickname.toLowerCase();
+                            const pinMatch = user.pin === pin;
                             
-                            // Update last seen
-                            try {
-                                const { ref: updateRef, update } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
-                                const userRef = updateRef(database, `users/${uid}`);
-                                await update(userRef, { lastSeen: Date.now() });
-                                console.log('Updated last seen for existing user');
-                            } catch (updateError) {
-                                console.warn('Could not update last seen:', updateError);
+                            console.log(`📝 Match results: nickname=${nicknameMatch}, pin=${pinMatch}`);
+                            
+                            if (nicknameMatch && pinMatch) {
+                                console.log('✅ EXACT MATCH FOUND for existing user:', user.nickname);
+                                
+                                // Update localStorage with existing user
+                                localStorage.setItem(STORAGE_KEY, JSON.stringify({ 
+                                    userId: uid, 
+                                    nickname: user.nickname, 
+                                    pin: user.pin 
+                                }));
+                                
+                                // Update last seen
+                                try {
+                                    const { ref: updateRef, update } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+                                    const userRef = updateRef(database, `users/${uid}`);
+                                    await update(userRef, { lastSeen: Date.now() });
+                                    console.log('📅 Updated last seen for existing user');
+                                } catch (updateError) {
+                                    console.warn('Could not update last seen:', updateError);
+                                }
+                                
+                                currentUser = { uid };
+                                return { userId: uid, nickname: user.nickname, isExisting: true };
+                            } else if (nicknameMatch) {
+                                console.log('⚠️ Found nickname but PIN mismatch:', user.nickname);
+                                console.log(`Expected PIN: ${pin}, Found PIN: ${user.pin}`);
                             }
-                            
-                            currentUser = { uid };
-                            return { userId: uid, nickname: user.nickname, isExisting: true };
                         }
                     }
+                } else {
+                    console.log('📂 No users found in Firebase database (empty)');
                 }
                 
-                console.log('🆕 No existing user found, will create new user');
+                console.log('🆕 No existing user found with those credentials');
                 return null; // No existing user found
                 
             } catch (error) {
-                console.warn('Could not check for existing users (connection issue):', error);
+                console.error('❌ Error checking for existing users:', error);
                 return null; // Continue to create new user
             }
+        } else {
+            console.warn('⚠️ Firebase not ready or database not available');
         }
         
         return null; // Firebase not ready, continue to create new user
@@ -137,43 +158,62 @@ const app = (() => {
 
     const saveUser = async ({ userId, nickname, pin }) => {
         console.log('saveUser called with:', { userId, nickname, pin });
+        console.log('Firebase ready status:', { isReady: isFirebaseReady, hasDatabase: !!database });
         
         // Check for nickname uniqueness if Firebase is available
         if (isFirebaseReady && database) {
             try {
-                console.log('Checking nickname uniqueness...');
+                console.log('🔍 Checking nickname uniqueness for:', nickname);
                 const { ref, get } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
                 const usersRef = ref(database, 'users');
                 const snapshot = await get(usersRef);
                 
                 if (snapshot.exists()) {
                     const existingUsers = Object.values(snapshot.val());
-                    const nicknameExists = existingUsers.some(user => {
+                    console.log('📊 Found', existingUsers.length, 'existing users to check against');
+                    
+                    // Check for nickname conflicts (same nickname with different PIN)
+                    const existingUserWithNickname = existingUsers.find(user => {
                         // Safe nickname comparison with null/undefined checks
                         if (!user || !user.nickname || !nickname) {
                             return false;
                         }
                         try {
-                            return user.nickname.toLowerCase() === nickname.toLowerCase();
+                            const userNick = user.nickname.toLowerCase();
+                            const checkNick = nickname.toLowerCase();
+                            console.log(`Comparing: "${checkNick}" vs "${userNick}"`);
+                            return userNick === checkNick;
                         } catch (error) {
                             console.warn('Could not check nickname equality:', error);
                             return false;
                         }
                     });
                     
-                    if (nicknameExists) {
-                        console.error('Nickname already exists:', nickname);
-                        throw new Error(`Username "${nickname}" is already taken. Please choose a different name.`);
+                    if (existingUserWithNickname) {
+                        // Check if it's the same user (same PIN) or different user
+                        if (existingUserWithNickname.pin !== pin) {
+                            console.error('❌ Nickname exists with different PIN:', nickname);
+                            throw new Error(`Username "${nickname}" is already taken. Please choose a different name or use the correct PIN.`);
+                        } else {
+                            // This should have been caught by authenticateUser, but just in case
+                            console.log('🔄 Same nickname and PIN found - should have been authenticated already');
+                            throw new Error(`You already have an account with this nickname. Please try logging in again.`);
+                        }
                     }
+                } else {
+                    console.log('📝 No existing users found in database');
                 }
                 console.log('✅ Nickname is unique, proceeding...');
             } catch (error) {
                 if (error.message.includes('already taken')) {
+                    console.error('🚫 Throwing nickname conflict error');
                     throw error; // Re-throw nickname conflict errors
                 }
                 console.warn('Could not check nickname uniqueness (connection issue):', error);
                 // Continue anyway if it's just a connection issue
             }
+        } else {
+            console.warn('⚠️ Firebase not ready, skipping nickname uniqueness check');
         }
         
         // Always save to localStorage first for immediate access

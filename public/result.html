@@ -75,26 +75,156 @@
 
             console.log('Elements found:', { winnerTitle, winnerDesc, rematchBtn });
 
-            // Load winner data from Firebase if available
-            let winner = room.winner || room.owner || 'Top Player';
+            // Load complete winner data from Firebase
+            let winnerData = null;
+            let competitionData = null;
             
             if (app.isFirebaseReady() && room.id) {
                 try {
+                    console.log('🔍 Fetching competition data from Firebase for room:', room.id);
                     const firebaseRoom = await app.getRoom(room.id);
-                    if (firebaseRoom && firebaseRoom.winner) {
-                        winner = firebaseRoom.winner;
-                        console.log('Loaded winner from Firebase:', winner);
+                    competitionData = firebaseRoom;
+                    
+                    if (firebaseRoom) {
+                        console.log('📊 Firebase room data:', firebaseRoom);
+                        
+                        // Check if competition was manually ended with stored winner
+                        if (firebaseRoom.manuallyEnded && firebaseRoom.winner) {
+                            console.log('🏆 Found manually ended competition with winner:', firebaseRoom.winner);
+                            winnerData = firebaseRoom.winner;
+                        } else {
+                            // Calculate winner from current data
+                            console.log('🔢 Calculating winner from current competition data...');
+                            winnerData = calculateWinner(firebaseRoom);
+                        }
+                        
+                        console.log('🎯 Final winner data:', winnerData);
+                    } else {
+                        console.warn('❌ No Firebase room data found');
                     }
                 } catch (error) {
-                    console.warn('Failed to load winner from Firebase, using local data:', error);
+                    console.warn('❌ Failed to load room from Firebase:', error);
                 }
             }
             
-            if (winnerTitle) {
-                winnerTitle.textContent = `${winner} wins!`;
+            // Function to calculate winner from room data
+            function calculateWinner(roomData) {
+                if (!roomData || !roomData.participants || !roomData.submissions) {
+                    console.warn('❌ Missing room data for winner calculation');
+                    return null;
+                }
+                
+                const participants = Object.values(roomData.participants);
+                const submissions = Object.values(roomData.submissions);
+                
+                console.log('📈 Calculating winner from:', {
+                    participantCount: participants.length,
+                    submissionCount: submissions.length,
+                    participants: participants.map(p => ({
+                        nickname: p.nickname,
+                        userId: p.userId,
+                        color: p.color
+                    }))
+                });
+                
+                // Calculate points for each participant from approved submissions
+                const participantPoints = participants.map(participant => {
+                    const userSubmissions = submissions.filter(sub => 
+                        sub.userId === participant.userId && sub.status === 'approved'
+                    );
+                    
+                    const totalPoints = userSubmissions.reduce((total, sub) => {
+                        return total + (sub.task?.points || 10);
+                    }, 0);
+                    
+                    return {
+                        ...participant,
+                        points: totalPoints,
+                        submissionCount: userSubmissions.length
+                    };
+                });
+                
+                // Sort by points to find winner
+                participantPoints.sort((a, b) => b.points - a.points);
+                
+                console.log('🏆 Participant rankings:', participantPoints.map((p, idx) => ({
+                    rank: idx + 1,
+                    nickname: p.nickname,
+                    points: p.points,
+                    color: p.color,
+                    submissionCount: p.submissionCount
+                })));
+                
+                const winner = participantPoints[0];
+                const hasCompetition = winner && winner.points > 0 && participantPoints.some(p => p.points < winner.points);
+                
+                if (hasCompetition) {
+                    console.log('🎉 Winner determined:', {
+                        nickname: winner.nickname,
+                        points: winner.points,
+                        color: winner.color,
+                        userId: winner.userId
+                    });
+                    return {
+                        nickname: winner.nickname,
+                        userId: winner.userId,
+                        points: winner.points,
+                        color: winner.color
+                    };
+                } else {
+                    console.log('🤝 No clear winner (tie or no points)');
+                    return null;
+                }
             }
-            if (winnerDesc) {
-                winnerDesc.textContent = 'Set up a new challenge and keep the streak.';
+            
+            // Display winner information
+            if (winnerData && winnerData.nickname) {
+                console.log('🎨 Displaying winner with color:', winnerData.color);
+                
+                if (winnerTitle) {
+                    winnerTitle.textContent = `${winnerData.nickname} wins!`;
+                    // Add winner's color as background accent
+                    if (winnerData.color) {
+                        winnerTitle.style.background = `linear-gradient(135deg, ${winnerData.color}, ${winnerData.color}cc)`;
+                        winnerTitle.style.color = '#fff';
+                        winnerTitle.style.padding = '12px 20px';
+                        winnerTitle.style.borderRadius = '8px';
+                        winnerTitle.style.textShadow = '0 1px 2px rgba(0,0,0,0.3)';
+                    }
+                }
+                
+                if (winnerDesc) {
+                    const pointsText = winnerData.points ? ` with ${winnerData.points} points` : '';
+                    winnerDesc.textContent = `🎉 Congratulations${pointsText}! Set up a new challenge and keep the streak.`;
+                }
+                
+                // Store winner color for IoT integration
+                if (winnerData.color) {
+                    console.log('💾 Storing winner color for IoT:', winnerData.color);
+                    localStorage.setItem('piggy-habit-winner-color', winnerData.color);
+                    
+                    // Also store complete winner data
+                    localStorage.setItem('piggy-habit-winner-data', JSON.stringify({
+                        nickname: winnerData.nickname,
+                        color: winnerData.color,
+                        points: winnerData.points,
+                        userId: winnerData.userId,
+                        timestamp: Date.now()
+                    }));
+                    
+                    console.log('🔌 Winner data stored for IoT piggy bank integration');
+                }
+                
+            } else {
+                // Fallback display
+                console.log('🤝 No winner determined, showing tie/default message');
+                
+                if (winnerTitle) {
+                    winnerTitle.textContent = competitionData?.manuallyEnded ? 'Competition Complete!' : 'Great effort everyone!';
+                }
+                if (winnerDesc) {
+                    winnerDesc.textContent = 'Everyone did their best! Set up a new challenge to continue.';
+                }
             }
 
             rematchBtn?.addEventListener('click', async () => {
@@ -106,9 +236,13 @@
                     
                     app.showToast('Starting rematch...');
                     
-                    // Clear old room data
+                    // Clear all old competition data including winner information
                     localStorage.removeItem('piggy-habit-room');
                     localStorage.removeItem('piggy-habit-proof-done');
+                    localStorage.removeItem('piggy-habit-winner-color');
+                    localStorage.removeItem('piggy-habit-winner-data');
+                    
+                    console.log('🗑️ Cleared old competition data for fresh start');
                     
                     setTimeout(() => {
                         window.location.href = 'create.html';

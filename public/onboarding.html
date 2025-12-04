@@ -398,16 +398,15 @@
                             const currentRoom = await app.getRoom(roomId);
                             console.log('Current room in Firebase before update:', currentRoom);
                             
-                            // Update the room with goals and participant info
+                            // Update only participant-specific data, NOT room-level goals
                             const firebaseUpdates = {
-                                goals: payload.goals,  // Save goals at room level
                                 mode: mode,
                                 updatedAt: Date.now(),
                                 [`participants/${firebaseUserId}`]: {
                                     userId: firebaseUserId,
                                     nickname: user.nickname,
                                     color: selectedColor,
-                                    goals: payload.goals, // Also save goals at participant level
+                                    goals: payload.goals, // Save goals ONLY at participant level
                                     score: 0,
                                     rate: 0,
                                     joinedAt: Date.now(),
@@ -415,9 +414,17 @@
                                 }
                             };
                             
-                            console.log('Updating Firebase room', roomId, 'with:', firebaseUpdates);
+                            console.log('Updating Firebase room', roomId, 'with participant-specific data:', firebaseUpdates);
                             await app.updateRoom(roomId, firebaseUpdates);
-                            console.log('✅ Successfully updated room in Firebase');
+                            console.log('✅ Successfully updated participant data in Firebase (no room-level goals)');
+                            
+                            // Clean up any existing room-level goals that shouldn't be there
+                            try {
+                                await app.updateRoom(roomId, { goals: null });
+                                console.log('🧹 Cleaned up room-level goals');
+                            } catch (cleanupError) {
+                                console.log('Note: Could not clean up room-level goals:', cleanupError.message);
+                            }
                             
                             // Verify the save worked
                             const verifyRoom = await app.getRoom(roomId);
