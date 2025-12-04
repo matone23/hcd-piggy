@@ -16,19 +16,21 @@
             <button class="btn btn-outline btn-small" id="logoutBtn">Logout</button>
         </header>
 
-        <section class="stack mt-24">
-            <div class="card">
-                <div class="between flex">
+        <section class="stack mt-24" id="lobbyContent">
+            <!-- Active room will be inserted here dynamically -->
+            
+            <div class="card" id="createRoomCard">
+                <div class="stack">
                     <div>
                         <div class="badge">Create Room</div>
                         <h1 style="margin: 8px 0 4px;">Start a new competition</h1>
                         <p>Pick routine or 1-day mode and invite friends.</p>
                     </div>
-                    <button class="btn btn-primary btn-small" id="createBtn" style="width:auto;">Create</button>
+                    <button class="btn btn-primary" id="createBtn">Create</button>
                 </div>
             </div>
 
-            <div class="card">
+            <div class="card" id="joinRoomCard">
                 <div class="stack">
                     <div class="between flex">
                         <div>
@@ -82,18 +84,37 @@
         document.addEventListener('DOMContentLoaded', async () => {
             console.log('Lobby DOM loaded');
             
+            // Check for localStorage/cookie availability
+            let storageAvailable = false;
+            try {
+                localStorage.setItem('test', 'test');
+                localStorage.removeItem('test');
+                storageAvailable = true;
+                console.log('✅ localStorage is available');
+            } catch (e) {
+                console.warn('❌ localStorage/cookies disabled:', e);
+                storageAvailable = false;
+            }
+            
+            // Check if there's a room code in the URL (from sharing)
+            const urlParams = new URLSearchParams(window.location.search);
+            const sharedRoomCode = urlParams.get('join');
+            
             // Load app module
             let app;
             try {
                 const appModule = await import('./js/app.js');
                 app = appModule.default;
                 
-                // Initialize Firebase
+                // Initialize Firebase (might fail with cookies disabled)
                 await app.initializeFirebase();
                 console.log('Firebase ready in lobby:', app.isFirebaseReady());
             } catch (error) {
-                console.error('Failed to load app module:', error);
-                return;
+                console.error('Failed to load app module or Firebase:', error);
+                if (!storageAvailable) {
+                    alert('This app requires cookies and localStorage to function. Please enable cookies and refresh the page.');
+                    return;
+                }
             }
 
             const user = app.requireUser();
@@ -103,6 +124,92 @@
             const joinCode = document.getElementById('join-code');
             const logoutBtn = document.getElementById('logoutBtn');
             const activeRoom = app.getActiveRoom();
+            
+            // Get UI elements
+            const lobbyContent = document.getElementById('lobbyContent');
+            const createRoomCard = document.getElementById('createRoomCard');
+            const joinRoomCard = document.getElementById('joinRoomCard');
+
+            console.log('Active room check:', activeRoom);
+
+            // Handle active room display
+            if (activeRoom && activeRoom.id) {
+                console.log('User has active room:', activeRoom.name);
+                
+                // Create active room card
+                const activeRoomCard = document.createElement('div');
+                activeRoomCard.className = 'card';
+                activeRoomCard.style.border = '2px solid #00E054';
+                activeRoomCard.innerHTML = `
+                    <div class="stack">
+                        <div>
+                            <div class="badge" style="background: #00E054; color: white;">Active Room</div>
+                            <h1 style="margin: 8px 0 4px;">${activeRoom.name || 'Your Room'}</h1>
+                            <p style="margin: 4px 0;">You're already in a room. Continue your progress!</p>
+                            <div class="muted" style="font-size: 14px;">
+                                Room Code: <strong>${activeRoom.id}</strong> • 
+                                ${activeRoom.participants ? Object.keys(activeRoom.participants).length : 1} participant(s)
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" id="goToRoomBtn" style="background: #00E054;">
+                            🏠 Go to Your Room
+                        </button>
+                    </div>
+                `;
+                
+                // Insert at the very top of the lobby content
+                lobbyContent.insertBefore(activeRoomCard, lobbyContent.firstChild);
+                
+                // Add click handler for active room button
+                const goToRoomBtn = document.getElementById('goToRoomBtn');
+                goToRoomBtn?.addEventListener('click', () => {
+                    window.location.href = 'room.html';
+                });
+                
+                // Disable and gray out other options
+                createRoomCard.style.opacity = '0.5';
+                createRoomCard.style.pointerEvents = 'none';
+                joinRoomCard.style.opacity = '0.5';
+                joinRoomCard.style.pointerEvents = 'none';
+                
+                // Update card content to show they're disabled
+                const createBadge = createRoomCard.querySelector('.badge');
+                const joinBadge = joinRoomCard.querySelector('.badge');
+                
+                if (createBadge) createBadge.textContent = 'Unavailable';
+                if (joinBadge) joinBadge.textContent = 'Unavailable';
+                
+                const createTitle = createRoomCard.querySelector('h1');
+                const joinTitle = joinRoomCard.querySelector('h1');
+                const createDesc = createRoomCard.querySelector('p');
+                const joinDesc = joinRoomCard.querySelector('p');
+                
+                if (createTitle) createTitle.textContent = 'Already in a room';
+                if (joinTitle) joinTitle.textContent = 'Already in a room';
+                if (createDesc) createDesc.textContent = 'Leave your current room to create a new one.';
+                if (joinDesc) joinDesc.textContent = 'Leave your current room to join another.';
+                
+                // Disable buttons
+                if (createBtn) {
+                    createBtn.textContent = 'In Active Room';
+                    createBtn.disabled = true;
+                }
+                if (joinBtn) {
+                    joinBtn.textContent = 'In Active Room';
+                    joinBtn.disabled = true;
+                }
+                if (joinCode) {
+                    joinCode.disabled = true;
+                }
+            } else {
+                console.log('No active room, showing normal lobby options');
+            }
+
+            // Auto-fill room code if shared (only if no active room)
+            if (sharedRoomCode && joinCode && !activeRoom) {
+                joinCode.value = sharedRoomCode;
+                app.showToast(`Auto-filled room code: ${sharedRoomCode}`);
+            }
 
             if (greeting && user?.nickname) {
                 const firebaseStatus = app.isFirebaseReady() ? '🔥' : '📱';
@@ -110,10 +217,19 @@
             }
 
             createBtn?.addEventListener('click', () => {
+                if (activeRoom && activeRoom.id) {
+                    app.showToast('You already have an active room. Go to your room or logout to create a new one.');
+                    return;
+                }
                 window.location.href = 'create.html';
             });
 
             joinBtn?.addEventListener('click', async () => {
+                if (activeRoom && activeRoom.id) {
+                    app.showToast('You already have an active room. Go to your room or logout to join another.');
+                    return;
+                }
+                
                 console.log('🚀 Join button clicked');
                 const code = joinCode?.value?.trim();
                 console.log('🚀 Code entered:', code);
@@ -130,15 +246,51 @@
                     joinBtn.textContent = 'Joining...';
                     console.log('🚀 About to call app.joinRoom with code:', code);
                     
+                    console.log('Current localStorage state:');
+                    console.log('- User:', localStorage.getItem('piggy-habit-user'));
+                    console.log('- Room:', localStorage.getItem('piggy-habit-room'));
+                    console.log('- Draft:', localStorage.getItem('piggy-habit-draft'));
+                    
                     console.log('Attempting to join room with code:', code);
                     console.log('Firebase ready status:', app.isFirebaseReady());
+                    console.log('Current app user:', app.getUser());
+                    console.log('Current Firebase user:', app.getCurrentUser());
                     
                     const room = await app.joinRoom(code);
                     console.log('🚀 joinRoom returned:', room);
                     console.log('Successfully joined room:', room);
                     
                     app.showToast(`Joined room ${code}!`);
-                    setTimeout(() => window.location.href = 'room.html', 400);
+                    
+                    // Check if user has completed onboarding for this room
+                    let hasCompletedOnboarding = false;
+                    const currentUser = app.getUser();
+                    
+                    if (room && room.participants && currentUser) {
+                        const userParticipant = room.participants[currentUser.userId];
+                        hasCompletedOnboarding = userParticipant && userParticipant.color && userParticipant.onboardingComplete;
+                        console.log('🔍 Onboarding check:', {
+                            userParticipant,
+                            hasColor: userParticipant?.color,
+                            hasFlag: userParticipant?.onboardingComplete,
+                            hasCompletedOnboarding
+                        });
+                    }
+                    
+                    // Redirect based on onboarding status
+                    const redirectUrl = hasCompletedOnboarding ? 'room.html' : `onboarding.html?type=${room.mode || 'routine'}`;
+                    console.log('🔄 Redirecting to:', redirectUrl);
+                    
+                    // Check if we can use setTimeout (might fail with strict cookie policies)
+                    if (storageAvailable) {
+                        setTimeout(() => {
+                            window.location.href = redirectUrl;
+                        }, 500);
+                    } else {
+                        // Immediate redirect for cookie-disabled browsers
+                        console.log('No storage - immediate redirect');
+                        window.location.href = redirectUrl;
+                    }
                 } catch (error) {
                     console.error('🚀 Error caught in lobby:', error);
                     console.error('Error joining room:', error);
@@ -173,29 +325,6 @@
                     app.showToast('Error logging out');
                 }
             });
-
-            if (activeRoom && activeRoom.id) {
-                // Verify the active room still exists in Firebase before showing the button
-                if (app.isFirebaseReady()) {
-                    try {
-                        const currentRoom = await app.getRoom(activeRoom.id);
-                        if (currentRoom && currentRoom.isActive !== false) {
-                            const resume = document.createElement('button');
-                            resume.className = 'btn btn-primary';
-                            resume.style.marginTop = '16px';
-                            resume.textContent = 'Go to active room';
-                            resume.addEventListener('click', () => window.location.href = 'room.html');
-                            document.querySelector('main .stack')?.appendChild(resume);
-                        } else {
-                            // Clear invalid active room from localStorage
-                            app.clearActiveRoom();
-                        }
-                    } catch (error) {
-                        console.log('Active room no longer exists, clearing from localStorage');
-                        app.clearActiveRoom();
-                    }
-                }
-            }
         });
     </script>
 </body>

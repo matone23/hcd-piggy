@@ -5,25 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>Piggy Habit | Verify</title>
     <link rel="stylesheet" href="css/style.css">
+    <script>
+        // IMMEDIATELY redirect to room - this page is deprecated
+        console.log('🚫 VERIFY PAGE DEPRECATED - Redirecting to room...');
+        window.location.replace('room.html#feed');
+    </script>
 </head>
 <body class="app-shell">
     <main class="page">
-        <header class="between flex">
-            <div>
-                <div class="muted">Verification</div>
-                <div style="font-weight:800; font-size:22px;">Confirm submission</div>
-            </div>
-            <button class="btn btn-outline btn-small" onclick="window.location.href='upload.html'">Back</button>
-        </header>
-
-        <section class="card stack mt-24">
-            <div class="muted" id="taskLabel">Task</div>
-            <img id="previewImg" alt="Proof" style="width:100%; border-radius: var(--radius-lg); border:1px solid var(--border);">
-            <button class="btn btn-primary" id="submitBtn">Submit Proof</button>
-        </section>
+        <div style="text-align: center; padding: 40px;">
+            <h2>Redirecting...</h2>
+            <p>This page has been moved to the room interface.</p>
+            <p><a href="room.html#feed">Click here if not redirected automatically</a></p>
+        </div>
     </main>
-
-    <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
     
     <!-- Firebase SDK -->
     <script type="module">
@@ -139,7 +136,6 @@
             console.log('Verify page initialized successfully');
         });
     </script>
-        });
     </script>
 </body>
 </html>

@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Piggy Habit | Upload Proof</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
@@ -14,18 +17,46 @@
                 <div style="font-weight:800; font-size:22px;">Upload proof</div>
             </div>
             <button class="btn btn-outline btn-small" onclick="window.location.href='room.html'">Back</button>
+            <button class="btn btn-outline btn-small" onclick="document.getElementById('debugPanel').style.display='flex'" style="margin-left: 8px;">Debug</button>
         </header>
 
         <section class="card stack mt-24">
             <div class="muted" id="taskTitle">Selected task</div>
             <label class="btn btn-primary" style="text-align:center; cursor:pointer; width:100%;">
                 <input type="file" accept="image/*" capture="environment" id="fileInput" style="display:none;">
-                Take/Choose Photo
+                📸 Take/Choose Photo
             </label>
+            
+            <!-- Alternative button for mobile users having issues -->
+            <button class="btn btn-outline" id="altFileBtn" style="width:100%; margin-top:8px;">
+                🖼️ Try Alternative Upload
+            </button>
+            
             <div id="previewWrap" class="stack" style="display:none;">
-                <div class="muted">Preview</div>
+                <div class="muted">Photo Preview</div>
                 <img id="previewImg" alt="Preview" style="width:100%; border-radius: var(--radius-lg); border:1px solid var(--border);">
-                <button class="btn btn-primary" id="nextBtn">Next</button>
+                
+                <div class="input-group">
+                    <label for="descriptionInput">Description (optional)</label>
+                    <textarea id="descriptionInput" 
+                             placeholder="Add a note about your progress..." 
+                             style="min-height: 80px; resize: vertical;"
+                             maxlength="300"></textarea>
+                    <div class="muted" style="font-size: 12px; text-align: right;" id="charCount">0/300</div>
+                </div>
+                
+                <button class="btn btn-primary" id="nextBtn">Submit Proof</button>
+            </div>
+        </section>
+        
+        <!-- Mobile Debug Panel (only visible when needed) -->
+        <section class="card stack mt-16" id="debugPanel" style="display: none; background: #f8f9fa; border: 1px dashed #ccc;">
+            <div class="between flex">
+                <div style="font-weight: 700;">Debug Info</div>
+                <button onclick="document.getElementById('debugPanel').style.display='none'" class="btn btn-small">Hide</button>
+            </div>
+            <div id="debugInfo" style="font-family: monospace; font-size: 11px; color: #666;">
+                Loading debug info...
             </div>
         </section>
     </main>
@@ -44,7 +75,6 @@
             authDomain: "hcd-piggy.firebaseapp.com",
             databaseURL: "https://hcd-piggy-default-rtdb.europe-west1.firebasedatabase.app",
             projectId: "hcd-piggy",
-            storageBucket: "hcd-piggy.firebasestorage.app",
             messagingSenderId: "663289864346",
             appId: "1:663289864346:web:8eba034298e5681d7b3f23"
         };
@@ -62,7 +92,8 @@
     
     <script type="module">
         document.addEventListener('DOMContentLoaded', async () => {
-            console.log('Upload page DOM loaded');
+            console.log('🆕 Upload page DOM loaded - DATABASE ONLY VERSION (v2.1)');
+            console.log('🚫 Firebase Storage is DISABLED - using database uploads only!');
             
             // Load app module
             let app;
@@ -81,12 +112,25 @@
             const user = app.requireUser();
             const proof = JSON.parse(localStorage.getItem('piggy-habit-proof') || '{}');
             console.log('Upload proof data:', proof);
+            console.log('Proof has roomId?', !!proof.roomId);
+            console.log('Proof roomId value:', proof.roomId);
+            console.log('localStorage piggy-habit-proof:', localStorage.getItem('piggy-habit-proof'));
+            console.log('Current user:', user);
+            
+            // Check if we have the required data
+            if (!proof.roomId) {
+                console.error('❌ No room ID found in proof data');
+                app?.showToast('Error: No room selected. Please go back to the room and try again.');
+                return;
+            }
             
             const fileInput = document.getElementById('fileInput');
             const previewWrap = document.getElementById('previewWrap');
             const previewImg = document.getElementById('previewImg');
             const taskTitle = document.getElementById('taskTitle');
             const nextBtn = document.getElementById('nextBtn');
+            const descriptionInput = document.getElementById('descriptionInput');
+            const charCount = document.getElementById('charCount');
 
             console.log('Elements found:', { fileInput, previewWrap, previewImg, taskTitle, nextBtn });
 
@@ -94,33 +138,376 @@
                 taskTitle.textContent = proof.task ? `${proof.task.label || 'Task'} · ${proof.task.desc || ''}` : 'Selected task';
             }
 
+            // Character counter for description
+            descriptionInput?.addEventListener('input', (e) => {
+                const count = e.target.value.length;
+                if (charCount) {
+                    charCount.textContent = `${count}/300`;
+                    charCount.style.color = count > 280 ? '#FF3B30' : '';
+                }
+            });
+
+            // Main file input handler
             fileInput?.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
+                handleFileSelection(e.target.files[0]);
+            });
+            
+            // Alternative file upload for mobile issues
+            document.getElementById('altFileBtn')?.addEventListener('click', () => {
+                // Create a new input element to ensure fresh state
+                const newInput = document.createElement('input');
+                newInput.type = 'file';
+                newInput.accept = 'image/jpeg,image/jpg,image/png,image/webp';
+                newInput.capture = 'environment';
+                newInput.style.display = 'none';
+                
+                newInput.addEventListener('change', (e) => {
+                    handleFileSelection(e.target.files[0]);
+                });
+                
+                document.body.appendChild(newInput);
+                newInput.click();
+                setTimeout(() => document.body.removeChild(newInput), 1000);
+            });
+            
+            // Centralized file handling function
+            function handleFileSelection(file) {
+                console.log('File selected:', file);
+                if (!file) {
+                    console.log('No file selected');
+                    return;
+                }
+                
+                // Validate file type
+                const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+                if (!allowedTypes.includes(file.type)) {
+                    app.showToast('Please select a valid image file (JPEG, PNG, WebP, or GIF)');
+                    return;
+                }
+                
+                // Check file size (limit to 8MB for better mobile compatibility)
+                const maxSize = 8 * 1024 * 1024; // 8MB
+                if (file.size > maxSize) {
+                    app.showToast(`Image too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Please choose a smaller image (max 8MB).`);
+                    return;
+                }
+                
+                console.log('File validation passed:', {
+                    name: file.name,
+                    type: file.type,
+                    size: `${(file.size / 1024 / 1024).toFixed(2)}MB`
+                });
+                
+                // Store the file object for later upload
+                window.selectedFile = file;
+                
+                // For mobile optimization, we'll compress the image if it's too large
+                if (file.size > 2 * 1024 * 1024) { // If larger than 2MB
+                    compressAndPreview(file);
+                } else {
+                    previewImage(file);
+                }
+            }
+            
+            // Image compression for mobile
+            function compressAndPreview(file) {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const img = new Image();
+                
+                img.onload = () => {
+                    // Calculate new dimensions (max 1200px width)
+                    const maxWidth = 1200;
+                    let { width, height } = img;
+                    
+                    if (width > maxWidth) {
+                        height = (height * maxWidth) / width;
+                        width = maxWidth;
+                    }
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    
+                    // Draw and compress
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    canvas.toBlob((compressedFile) => {
+                        if (compressedFile) {
+                            console.log('Image compressed:', {
+                                original: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
+                                compressed: `${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`
+                            });
+                            window.selectedFile = new File([compressedFile], file.name, {
+                                type: 'image/jpeg',
+                                lastModified: Date.now()
+                            });
+                            previewImage(window.selectedFile);
+                        } else {
+                            previewImage(file); // Fallback to original
+                        }
+                    }, 'image/jpeg', 0.8); // 80% quality
+                };
+                
+                img.onerror = () => {
+                    console.error('Failed to load image for compression');
+                    previewImage(file); // Fallback to original
+                };
+                
+                const reader = new FileReader();
+                reader.onload = (e) => img.src = e.target.result;
+                reader.onerror = () => previewImage(file); // Fallback
+                reader.readAsDataURL(file);
+            }
+            
+            // Preview the selected image
+            function previewImage(file) {
                 const reader = new FileReader();
                 reader.onload = (ev) => {
                     if (previewImg) {
                         previewImg.src = ev.target.result;
+                        previewImg.onload = () => {
+                            console.log('Preview image loaded successfully');
+                            if (previewWrap) {
+                                previewWrap.style.display = 'flex';
+                            }
+                        };
+                        previewImg.onerror = () => {
+                            console.error('Failed to display preview image');
+                            app.showToast('Failed to preview image. You can still try to upload.');
+                        };
                     }
-                    if (previewWrap) {
-                        previewWrap.style.display = 'flex';
-                    }
-                    localStorage.setItem('piggy-habit-proof-img', ev.target.result);
-                    console.log('Image loaded and saved to localStorage');
+                };
+                reader.onerror = (error) => {
+                    console.error('FileReader error:', error);
+                    app.showToast('Failed to read image file. Please try a different photo.');
                 };
                 reader.readAsDataURL(file);
-            });
+            }
 
-            nextBtn?.addEventListener('click', () => {
-                console.log('Next button clicked');
+            nextBtn?.addEventListener('click', async () => {
+                console.log('Submit button clicked');
                 if (!previewImg?.src) {
                     app.showToast('Please attach a photo.');
                     return;
                 }
-                window.location.href = 'verify.html';
+                
+                if (!window.selectedFile) {
+                    app.showToast('No photo file selected. Please try again.');
+                    return;
+                }
+                
+                try {
+                    nextBtn.disabled = true;
+                    nextBtn.textContent = 'Uploading...';
+                    
+                    const description = descriptionInput?.value?.trim() || '';
+                    console.log('Preparing submission with file upload...');
+                    console.log('File to upload:', window.selectedFile);
+                    
+                    // Get consistent user ID (Firebase UID if available, otherwise localStorage ID)
+                    const currentUser = app.getCurrentUser();
+                    const userId = currentUser?.uid || user.userId;
+                    console.log('Using user ID for submission:', userId);
+                    
+                    const firebaseStatus = app.isFirebaseReady();
+                    console.log('Detailed Firebase status:', firebaseStatus);
+                    
+                    if (!firebaseStatus || !firebaseStatus.isReady || !proof.roomId) {
+                        console.error('❌ Cannot submit - Firebase not ready or no room ID');
+                        app.showToast('Cannot submit: Please refresh and try again.');
+                        return;
+                    }
+                    
+                    // Upload image using Firebase Database (no Storage costs!)
+                    let imageUrl = '';
+                    console.log('📤 Uploading image to Firebase Database (cost-free)...');
+                    
+                    try {
+                        console.log('📱 Converting to optimized base64 for database storage...');
+                        nextBtn.textContent = 'Compressing image...';
+                        
+                        // Compress image for database storage
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        const img = new Image();
+                        
+                        await new Promise((resolve, reject) => {
+                            img.onload = resolve;
+                            img.onerror = reject;
+                            img.src = URL.createObjectURL(window.selectedFile);
+                        });
+                        
+                        // Calculate optimal dimensions for database storage (target ~300KB max)
+                        let { width, height } = img;
+                        const maxWidth = 800;
+                        const maxHeight = 600;
+                        
+                        if (width > maxWidth || height > maxHeight) {
+                            const ratio = Math.min(maxWidth / width, maxHeight / height);
+                            width *= ratio;
+                            height *= ratio;
+                        }
+                        
+                        canvas.width = width;
+                        canvas.height = height;
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        // Convert to base64 with good compression
+                        const base64 = canvas.toDataURL('image/jpeg', 0.75);
+                        
+                        console.log(`📦 Optimized image: ${(base64.length / 1024 / 1024).toFixed(2)}MB`);
+                        
+                        nextBtn.textContent = 'Uploading to database...';
+                        
+                        // Store in Firebase Database
+                        const timestamp = Date.now();
+                        const imageId = `${userId}_${timestamp}`;
+                        
+                        // Use the v9 Firebase Database syntax
+                        const { ref, set, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+                        const imageRef = ref(window.firebaseDatabase, `tempImages/${imageId}`);
+                        
+                        await set(imageRef, {
+                            data: base64,
+                            filename: window.selectedFile.name,
+                            uploadedAt: serverTimestamp(),
+                            userId: userId
+                        });
+                        
+                        imageUrl = `database:${imageId}`; // Special prefix to indicate database storage
+                        console.log('✅ Database upload successful:', imageId);
+                        
+                    } catch (uploadError) {
+                        console.error('❌ Database upload failed:', uploadError);
+                        app.showToast(`Failed to upload image: ${uploadError.message}`);
+                        return;
+                    }
+                    
+                    if (!imageUrl) {
+                        app.showToast('Failed to upload image after multiple attempts. Please try again.');
+                        return;
+                    }
+                    
+                    // Save submission metadata to Firebase Database (much smaller now)
+                    try {
+                        console.log('💾 Saving submission metadata to Firebase...');
+                        nextBtn.textContent = 'Saving submission...';
+                        
+                        const submissionData = {
+                            ...proof,
+                            imageUrl: imageUrl, // Store URL instead of base64 data
+                            description: description,
+                            submittedAt: Date.now(),
+                            submittedBy: user.nickname,
+                            userId: userId,
+                            status: 'pending',
+                            approvals: [],
+                            rejections: []
+                        };
+                        
+                        const submissionId = `${userId}_${Date.now()}`;
+                        const updateData = {
+                            [`submissions/${submissionId}`]: submissionData
+                        };
+                        
+                        console.log('Submission data to save:', submissionData);
+                        await app.updateRoom(proof.roomId, updateData);
+                        console.log('✅ Submission saved to Firebase successfully');
+                        
+                    } catch (firebaseError) {
+                        console.error('❌ Failed to save submission to Firebase:', firebaseError);
+                        app.showToast(`Firebase error: ${firebaseError.message}`);
+                        return;
+                    }
+                    
+                    // Clean up
+                    localStorage.removeItem('piggy-habit-proof');
+                    localStorage.removeItem('piggy-habit-proof-done');
+                    localStorage.removeItem('piggy-habit-proof-img'); // Clean up any old image data
+                    window.selectedFile = null;
+                    
+                    // Clear any cached redirects or state that might interfere
+                    sessionStorage.removeItem('lastPage');
+                    sessionStorage.removeItem('redirectAfterUpload');
+                    localStorage.removeItem('pendingRedirect');
+                    
+                    // Set completion flags
+                    window.uploadCompleted = true;
+                    sessionStorage.setItem('uploadJustCompleted', 'true');
+                    localStorage.setItem('uploadSuccess', Date.now().toString());
+                    
+                    // Clean up and set completion flags
+                    window.uploadCompleted = true;
+                    sessionStorage.setItem('uploadJustCompleted', 'true');
+                    localStorage.setItem('uploadSuccess', Date.now().toString());
+                    
+                    // Block verify redirects for a short time
+                    window.blockVerifyRedirect = true;
+                    setTimeout(() => {
+                        window.blockVerifyRedirect = false;
+                    }, 5000);
+                    
+                    app.showToast('Proof submitted! Returning to room...');
+                    console.log('🚀 UPLOAD COMPLETED - About to redirect to room');
+                    
+                    // Simple redirect to room
+                    setTimeout(() => {
+                        window.location.href = 'room.html#feed';
+                    }, 1000);
+                } catch (error) {
+                    console.error('❌ Error submitting proof:', error);
+                    app.showToast(`Failed to submit proof: ${error.message}`);
+                } finally {
+                    nextBtn.disabled = false;
+                    nextBtn.textContent = 'Submit Proof';
+                }
             });
             
             console.log('Upload page initialized successfully');
+            
+            // Mobile debugging - show debug panel if there are any issues
+            setTimeout(() => {
+                const debugPanel = document.getElementById('debugPanel');
+                const debugInfo = document.getElementById('debugInfo');
+                
+                if (debugPanel && debugInfo) {
+                    // Detect potential mobile issues
+                    const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                    const hasTouch = 'ontouchstart' in window;
+                    const isStandalone = window.navigator.standalone === true;
+                    
+                    debugInfo.innerHTML = `
+                        <strong>Device Info:</strong><br>
+                        Mobile: ${isMobile}<br>
+                        Touch: ${hasTouch}<br>
+                        Standalone: ${isStandalone}<br>
+                        User Agent: ${navigator.userAgent.substring(0, 50)}...<br>
+                        <br>
+                        <strong>Firebase Status:</strong><br>
+                        Auth: ${!!window.firebaseAuth}<br>
+                        Database: ${!!window.firebaseDatabase}<br>
+                        App Ready: ${app?.isFirebaseReady()}<br>
+                        <br>
+                        <strong>Upload Data:</strong><br>
+                        Room ID: ${proof.roomId || 'Missing!'}<br>
+                        Task: ${proof.task ? 'Present' : 'Missing!'}<br>
+                        User: ${user?.nickname || 'Unknown'}<br>
+                        <br>
+                        <strong>File Input Support:</strong><br>
+                        Input Element: ${!!fileInput}<br>
+                        File API: ${!!window.File}<br>
+                        FileReader: ${!!window.FileReader}<br>
+                        <br>
+                        <button onclick="navigator.clipboard?.writeText(this.parentElement.innerText.replace(/<[^>]*>/g, ''))" 
+                                style="padding: 4px 8px; font-size: 10px;">Copy Debug Info</button>
+                    `;
+                    
+                    // Show debug panel if there are issues or on mobile
+                    if (isMobile || !proof.roomId || !app?.isFirebaseReady()) {
+                        debugPanel.style.display = 'flex';
+                    }
+                }
+            }, 1000);
         });
     </script>
 </body>

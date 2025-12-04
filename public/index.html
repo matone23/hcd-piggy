@@ -140,9 +140,26 @@
 
                 try {
                     startBtn.disabled = true;
-                    startBtn.textContent = 'Creating Account...';
-                    console.log('Starting user creation process...');
+                    startBtn.textContent = 'Checking Account...';
+                    console.log('Starting authentication process...');
 
+                    // First, try to authenticate with existing credentials
+                    const existingUser = await app.authenticateUser(payload);
+                    
+                    if (existingUser) {
+                        console.log('✅ Existing user authenticated:', existingUser.nickname);
+                        app.showToast(`Welcome back, ${existingUser.nickname}!`);
+                        
+                        // Check if they have an active room
+                        const activeRoom = app.getActiveRoom();
+                        window.location.href = activeRoom ? 'room.html' : 'lobby.html';
+                        return;
+                    }
+                    
+                    // No existing user found, create a new one
+                    console.log('Creating new user account...');
+                    startBtn.textContent = 'Creating Account...';
+                    
                     const userId = app.generateId();
                     console.log('Generated user ID:', userId);
                     
@@ -166,7 +183,15 @@
                         message: error.message,
                         stack: error.stack
                     });
-                    app.showToast('Failed to create account. Please try again.');
+                    
+                    // Show specific error message for nickname conflicts
+                    if (error.message.includes('already taken')) {
+                        app.showToast(error.message);
+                        nickname.focus();
+                        nickname.select();
+                    } else {
+                        app.showToast('Failed to create account. Please try again.');
+                    }
                 } finally {
                     startBtn.disabled = false;
                     startBtn.textContent = 'Get Started';

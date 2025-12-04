@@ -17,6 +17,16 @@ const app = (() => {
         setTimeout(() => toast.classList.remove('show'), 3000);
     };
 
+    // Expose Firebase readiness status
+    const getFirebaseReadiness = () => {
+        return {
+            isReady: isFirebaseReady,
+            hasDatabase: !!database,
+            hasAuth: !!auth,
+            hasUser: !!currentUser
+        };
+    };
+
     // Firebase initialization
     const initializeFirebase = async () => {
         try {
@@ -70,8 +80,101 @@ const app = (() => {
     };
 
     // User management with Firebase integration
+    const authenticateUser = async ({ nickname, pin }) => {
+        console.log('authenticateUser called with:', { nickname, pin: '****' });
+        
+        if (isFirebaseReady && database) {
+            try {
+                console.log('🔍 Checking for existing user in Firebase...');
+                const { ref, get } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+                const usersRef = ref(database, 'users');
+                const snapshot = await get(usersRef);
+                
+                if (snapshot.exists()) {
+                    const existingUsers = snapshot.val();
+                    
+                    // Look for user with matching nickname and PIN
+                    for (const [uid, user] of Object.entries(existingUsers)) {
+                        if (user && user.nickname && user.pin &&
+                            user.nickname.toLowerCase() === nickname.toLowerCase() && 
+                            user.pin === pin) {
+                            console.log('✅ Found existing user:', user.nickname);
+                            
+                            // Update localStorage with existing user
+                            localStorage.setItem(STORAGE_KEY, JSON.stringify({ 
+                                userId: uid, 
+                                nickname: user.nickname, 
+                                pin: user.pin 
+                            }));
+                            
+                            // Update last seen
+                            try {
+                                const { ref: updateRef, update } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+                                const userRef = updateRef(database, `users/${uid}`);
+                                await update(userRef, { lastSeen: Date.now() });
+                                console.log('Updated last seen for existing user');
+                            } catch (updateError) {
+                                console.warn('Could not update last seen:', updateError);
+                            }
+                            
+                            currentUser = { uid };
+                            return { userId: uid, nickname: user.nickname, isExisting: true };
+                        }
+                    }
+                }
+                
+                console.log('🆕 No existing user found, will create new user');
+                return null; // No existing user found
+                
+            } catch (error) {
+                console.warn('Could not check for existing users (connection issue):', error);
+                return null; // Continue to create new user
+            }
+        }
+        
+        return null; // Firebase not ready, continue to create new user
+    };
+
     const saveUser = async ({ userId, nickname, pin }) => {
         console.log('saveUser called with:', { userId, nickname, pin });
+        
+        // Check for nickname uniqueness if Firebase is available
+        if (isFirebaseReady && database) {
+            try {
+                console.log('Checking nickname uniqueness...');
+                const { ref, get } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+                const usersRef = ref(database, 'users');
+                const snapshot = await get(usersRef);
+                
+                if (snapshot.exists()) {
+                    const existingUsers = Object.values(snapshot.val());
+                    const nicknameExists = existingUsers.some(user => {
+                        // Safe nickname comparison with null/undefined checks
+                        if (!user || !user.nickname || !nickname) {
+                            return false;
+                        }
+                        try {
+                            return user.nickname.toLowerCase() === nickname.toLowerCase();
+                        } catch (error) {
+                            console.warn('Could not check nickname equality:', error);
+                            return false;
+                        }
+                    });
+                    
+                    if (nicknameExists) {
+                        console.error('Nickname already exists:', nickname);
+                        throw new Error(`Username "${nickname}" is already taken. Please choose a different name.`);
+                    }
+                }
+                console.log('✅ Nickname is unique, proceeding...');
+            } catch (error) {
+                if (error.message.includes('already taken')) {
+                    throw error; // Re-throw nickname conflict errors
+                }
+                console.warn('Could not check nickname uniqueness (connection issue):', error);
+                // Continue anyway if it's just a connection issue
+            }
+        }
         
         // Always save to localStorage first for immediate access
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ userId, nickname, pin }));
@@ -193,50 +296,91 @@ const app = (() => {
     };
 
     const createRoom = async (roomData) => {
+        console.log('🏭 createRoom called with:', roomData);
         const user = getUser();
-        if (!user) throw new Error('No user logged in');
+        if (!user) {
+            console.error('❌ No user logged in');
+            throw new Error('No user logged in');
+        }
+
+        // Ensure Firebase is ready
+        if (!isFirebaseReady || !database) {
+            console.error('❌ Firebase not ready for room creation');
+            throw new Error('Firebase not ready. Please refresh the page and try again.');
+        }
 
         // Generate unique 6-digit room code
+        console.log('🔢 Generating room code...');
         const roomCode = await generateUniqueRoomCode();
-        console.log('Generated room code:', roomCode);
+        console.log('✅ Generated room code:', roomCode);
 
-        if (isFirebaseReady && database && currentUser) {
-            try {
-                // Create room in Firebase with 6-digit code as key
-                const { ref, set } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
-                const roomRef = ref(database, `rooms/${roomCode}`);
-                
-                const room = {
-                    id: roomCode,
-                    code: roomCode,
-                    ...roomData,
-                    createdBy: currentUser.uid,
-                    createdAt: Date.now(),
-                    members: [currentUser.uid],
-                    isActive: true
-                };
-                
-                await set(roomRef, room);
-                console.log('Room created in Firebase with code:', roomCode);
-                
-                saveActiveRoom(room);
-                return room;
-            } catch (error) {
-                console.error('Error creating room in Firebase:', error);
-                showToast('Room created locally (offline mode)');
-            }
+        console.log('🔍 Firebase status:', {
+            isReady: isFirebaseReady,
+            hasDatabase: !!database,
+            hasCurrentUser: !!currentUser
+        });
+
+        // Ensure we have an authenticated user
+        if (!currentUser) {
+            console.log('🔐 No current user, signing in anonymously...');
+            const { signInAnonymously } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js');
+            const result = await signInAnonymously(auth);
+            currentUser = result.user;
+            console.log('✅ Signed in anonymously:', currentUser.uid);
         }
         
-        // Fallback to local creation
-        const room = { 
+        console.log('🔥 Creating room in Firebase...');
+        
+        // Create room in Firebase with 6-digit code as key
+        const { ref, set } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+        const roomRef = ref(database, `rooms/${roomCode}`);
+        console.log('💾 Creating room at path:', `rooms/${roomCode}`);
+        
+        const room = {
             id: roomCode,
-            code: roomCode, 
-            ...roomData, 
+            code: roomCode,
+            ...roomData,
+            createdBy: currentUser.uid,
             createdAt: Date.now(),
-            members: [user.userId]
+            participants: {
+                [currentUser.uid]: {
+                    userId: currentUser.uid,
+                    nickname: user.nickname,
+                    score: 0,
+                    rate: 0,
+                    joinedAt: Date.now(),
+                    isCreator: true
+                }
+            },
+            isActive: true
         };
-        saveActiveRoom(room);
-        return room;
+        
+        console.log('💾 Room object to save:', room);
+        
+        try {
+            await set(roomRef, room);
+            console.log('✅ Room successfully created in Firebase with code:', roomCode);
+            
+            // Save to localStorage only after Firebase succeeds
+            saveActiveRoom(room);
+            return room;
+        } catch (error) {
+            console.error('❌ Firebase save failed:', error);
+            console.error('Error details:', {
+                message: error.message,
+                code: error.code,
+                stack: error.stack
+            });
+            
+            // Throw specific error based on Firebase error code
+            if (error.code === 'PERMISSION_DENIED') {
+                throw new Error('Permission denied. Check Firebase security rules.');
+            } else if (error.code === 'NETWORK_ERROR') {
+                throw new Error('Network error. Check your internet connection.');
+            } else {
+                throw new Error(`Firebase error: ${error.message}`);
+            }
+        }
     };
 
     const getRooms = async () => {
@@ -285,6 +429,23 @@ const app = (() => {
             return null;
         } catch (error) {
             console.error('Error fetching room from Firebase:', error);
+            throw error;
+        }
+    };
+
+    const updateRoom = async (roomId, updates) => {
+        if (!isFirebaseReady || !database) {
+            throw new Error('Firebase not ready');
+        }
+
+        try {
+            const { ref, update } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+            const roomRef = ref(database, `rooms/${roomId}`);
+            await update(roomRef, updates);
+            console.log('Room updated in Firebase:', roomId, updates);
+            return true;
+        } catch (error) {
+            console.error('Error updating room in Firebase:', error);
             throw error;
         }
     };
@@ -340,8 +501,23 @@ const app = (() => {
                 throw new Error(`Room ${roomCode} is no longer active`);
             }
             
-            // ONLY read the room data, don't update anything
-            // The room creator will manage the member list
+            // Add user to room participants if not already there
+            const currentParticipants = roomData.participants || {};
+            if (!currentParticipants[currentUser.uid]) {
+                console.log('\ud83d\udd0d Adding user to room participants:', currentUser.uid);
+                await update(roomRef, {
+                    [`participants/${currentUser.uid}`]: {
+                        userId: currentUser.uid,
+                        nickname: user.nickname,
+                        color: null, // Will be set during onboarding
+                        score: 0,
+                        rate: 0,
+                        joinedAt: Date.now()
+                    }
+                });
+                console.log('\ud83d\udd0d Successfully added user to room in Firebase');
+            }
+            
             const room = { id: roomCode, code: roomCode, ...roomData };
             saveActiveRoom(room);
             console.log('🔍 Successfully validated and joined room:', roomCode);
@@ -424,6 +600,7 @@ const app = (() => {
         generateId,
         generateRoomCode,
         generateUniqueRoomCode,
+        authenticateUser,
         saveUser,
         getUser,
         clearUser,
@@ -432,12 +609,18 @@ const app = (() => {
         saveActiveRoom,
         clearActiveRoom,
         createRoom,
+        updateRoom,
         getRooms,
         getRoom,
         joinRoom,
         subscribeToRoom,
         initializeFirebase,
-        isFirebaseReady: () => isFirebaseReady,
+        isFirebaseReady: () => ({
+            isReady: isFirebaseReady,
+            hasDatabase: !!database,
+            hasAuth: !!auth,
+            hasUser: !!currentUser
+        }),
         getCurrentUser: () => currentUser
     };
 })();

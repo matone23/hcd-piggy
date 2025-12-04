@@ -6,17 +6,30 @@
         ".write": "$uid === auth.uid"
       }
     },
+    "tempImages": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$imageId": {
+        ".validate": "newData.hasChildren(['data', 'filename', 'uploadedAt', 'userId'])",
+        "userId": {
+          ".validate": "newData.val() === auth.uid"
+        }
+      }
+    },
     "rooms": {
       ".read": "auth != null",
       ".write": "auth != null",
       ".indexOn": ["isActive", "createdAt"],
       "$roomId": {
-        ".validate": "newData.hasChildren(['name', 'createdBy', 'createdAt', 'members', 'isActive'])",
+        ".validate": "newData.hasChildren(['name', 'createdBy', 'createdAt', 'participants', 'isActive'])",
         "createdBy": {
           ".validate": "newData.val() === auth.uid"
         },
-        "members": {
-          ".validate": "newData.isString() || newData.hasChildren()"
+        "participants": {
+          ".validate": "newData.hasChildren()",
+          "$participantId": {
+            ".validate": "newData.hasChildren(['userId', 'nickname'])"
+          }
         }
       }
     }
