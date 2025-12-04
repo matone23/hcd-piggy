@@ -9,6 +9,7 @@
     "rooms": {
       ".read": "auth != null",
       ".write": "auth != null",
+      ".indexOn": ["isActive", "createdAt"],
       "$roomId": {
         ".validate": "newData.hasChildren(['name', 'createdBy', 'createdAt', 'members', 'isActive'])",
         "createdBy": {

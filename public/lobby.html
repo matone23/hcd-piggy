@@ -114,8 +114,12 @@
             });
 
             joinBtn?.addEventListener('click', async () => {
+                console.log('🚀 Join button clicked');
                 const code = joinCode?.value?.trim();
+                console.log('🚀 Code entered:', code);
+                
                 if (!code || !/^[0-9]{6}$/.test(code)) {
+                    console.log('🚀 Invalid code, showing toast');
                     app.showToast('Enter a valid 6-digit code.');
                     joinCode?.focus();
                     return;
@@ -124,15 +128,36 @@
                 try {
                     joinBtn.disabled = true;
                     joinBtn.textContent = 'Joining...';
+                    console.log('🚀 About to call app.joinRoom with code:', code);
                     
-                    await app.joinRoom(code);
+                    console.log('Attempting to join room with code:', code);
+                    console.log('Firebase ready status:', app.isFirebaseReady());
+                    
+                    const room = await app.joinRoom(code);
+                    console.log('🚀 joinRoom returned:', room);
+                    console.log('Successfully joined room:', room);
+                    
                     app.showToast(`Joined room ${code}!`);
-                    
                     setTimeout(() => window.location.href = 'room.html', 400);
                 } catch (error) {
+                    console.error('🚀 Error caught in lobby:', error);
                     console.error('Error joining room:', error);
-                    app.showToast('Failed to join room. Please try again.');
+                    console.error('Error message:', error.message);
+                    
+                    // Show specific error messages
+                    if (error.message.includes('does not exist')) {
+                        app.showToast(`Room ${code} does not exist. Check the code and try again.`);
+                    } else if (error.message.includes('not found')) {
+                        app.showToast(`Room ${code} does not exist. Check the code and try again.`);
+                    } else if (error.message.includes('not ready')) {
+                        app.showToast('Connection issue. Please check your internet and try again.');
+                    } else if (error.message.includes('no longer active')) {
+                        app.showToast(`Room ${code} is no longer active.`);
+                    } else {
+                        app.showToast('Failed to join room: ' + error.message);
+                    }
                 } finally {
+                    console.log('🚀 Finally block - restoring button');
                     joinBtn.disabled = false;
                     joinBtn.textContent = 'Join';
                 }
@@ -149,58 +174,26 @@
                 }
             });
 
-            if (activeRoom) {
-                const resume = document.createElement('button');
-                resume.className = 'btn btn-primary';
-                resume.style.marginTop = '16px';
-                resume.textContent = 'Go to active room';
-                resume.addEventListener('click', () => window.location.href = 'room.html');
-                document.querySelector('main .stack')?.appendChild(resume);
-            }
-
-            // Load and display available rooms if Firebase is ready
-            if (app.isFirebaseReady()) {
-                try {
-                    const rooms = await app.getRooms();
-                    console.log('Available rooms:', rooms);
-                    
-                    if (rooms.length > 0) {
-                        const roomsList = document.createElement('div');
-                        roomsList.className = 'mt-16';
-                        roomsList.innerHTML = `
-                            <h3>Available Rooms</h3>
-                            <div class="stack mt-8">
-                                ${rooms.map(room => `
-                                    <div class="card" style="padding: 12px;">
-                                        <div class="between flex">
-                                            <div>
-                                                <strong>${room.name || 'Unnamed Room'}</strong>
-                                                <div class="muted">${room.members?.length || 0} members</div>
-                                            </div>
-                                            <button class="btn btn-outline btn-small" onclick="joinRoomById('${room.id}')">
-                                                Join
-                                            </button>
-                                        </div>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        `;
-                        document.querySelector('main')?.appendChild(roomsList);
-                        
-                        // Make joinRoomById available globally
-                        window.joinRoomById = async (roomId) => {
-                            try {
-                                await app.joinRoom(roomId);
-                                app.showToast('Joined room!');
-                                setTimeout(() => window.location.href = 'room.html', 400);
-                            } catch (error) {
-                                console.error('Error joining room:', error);
-                                app.showToast('Failed to join room');
-                            }
-                        };
+            if (activeRoom && activeRoom.id) {
+                // Verify the active room still exists in Firebase before showing the button
+                if (app.isFirebaseReady()) {
+                    try {
+                        const currentRoom = await app.getRoom(activeRoom.id);
+                        if (currentRoom && currentRoom.isActive !== false) {
+                            const resume = document.createElement('button');
+                            resume.className = 'btn btn-primary';
+                            resume.style.marginTop = '16px';
+                            resume.textContent = 'Go to active room';
+                            resume.addEventListener('click', () => window.location.href = 'room.html');
+                            document.querySelector('main .stack')?.appendChild(resume);
+                        } else {
+                            // Clear invalid active room from localStorage
+                            app.clearActiveRoom();
+                        }
+                    } catch (error) {
+                        console.log('Active room no longer exists, clearing from localStorage');
+                        app.clearActiveRoom();
                     }
-                } catch (error) {
-                    console.error('Error loading rooms:', error);
                 }
             }
         });

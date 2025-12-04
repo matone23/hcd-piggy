@@ -186,10 +186,15 @@
                     const room = await app.createRoom(roomData);
                     console.log('Room created:', room);
                     
-                    app.showToast(`Room "${name}" created!`);
+                    app.showToast(`Room "${name}" created! Code: ${room.code || room.id}`);
+                    
+                    // Show room code in console for easy copying
+                    console.log('🎉 ROOM CREATED! Share this code:', room.code || room.id);
                     
                     // Save draft for onboarding
                     const draft = {
+                        id: room.id,
+                        code: room.code || room.id,
                         owner: user.nickname,
                         name,
                         mode: formState.mode,

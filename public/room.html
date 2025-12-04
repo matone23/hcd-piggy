@@ -9,10 +9,10 @@
 <body class="app-shell">
     <header id="roomHeader" style="padding: 20px; color: #0b1b0f; background: linear-gradient(135deg, #00E054, #00b045);">
         <div class="between flex">
-            <div id="roomTitle" style="font-weight: 800; font-size: 22px;">Room</div>
+            <div id="roomTitle" style="font-weight: 800; font-size: 22px;">Piggy Room</div>
             <button class="btn btn-outline btn-small" style="background: rgba(0,0,0,0.12); color:#0b1b0f; border-color: rgba(255,255,255,0.25);" onclick="window.location.href='lobby.html'">Lobby</button>
         </div>
-        <div id="leaderBanner" class="pill mt-8" style="background: rgba(0,0,0,0.15); color:#0b1b0f;">Loading leader...</div>
+        <div id="leaderBanner" class="pill mt-8" style="background: rgba(0,0,0,0.15); color:#0b1b0f;">Getting ready...</div>
     </header>
 
     <main class="page" style="padding-top:16px;">
@@ -116,9 +116,7 @@
             // Fallback to mock data for development
             if (participants.length === 0) {
                 participants = roomData.participants || [
-                    { nickname: user.nickname, score: 120, rate: 0.85, color },
-                    { nickname: 'Player B', score: 140, rate: 0.9, color: '#FF3B30' },
-                    { nickname: 'Player C', score: 110, rate: 0.72, color: '#007AFF' },
+                    { nickname: user.nickname, score: 0, rate: 0.0, color },
                 ];
                 console.log('Using fallback participants:', participants);
             }
@@ -216,9 +214,9 @@
             }
 
             const goals = roomData.goals || [
-                { label: 'Min', desc: 'Drink water', points: 2 },
-                { label: 'More', desc: 'Supplements', points: 5 },
-                { label: 'Max', desc: 'Run 30m', points: 10 },
+                { label: 'Min', desc: 'Basic goal', points: 2 },
+                { label: 'More', desc: 'Regular goal', points: 5 },
+                { label: 'Max', desc: 'Stretch goal', points: 10 },
             ];
 
             goals.forEach(goal => {
@@ -329,15 +327,41 @@
             };
 
             // --- Feed Tab ---
-            const feedData = (roomData.feed || [
-            { user: user.nickname, badge: 'Min', text: 'Drink water', time: 'Just now', img: '', hype: 2, sus: 0 },
-            { user: 'Teammate', badge: '30m', text: 'Vocab 50 words', time: '5m ago', img: '', hype: 1, sus: 1 },
-        ]).map(item => ({ ...item, flagged: false }));
+            const feedData = roomData.feed || [];
+            
+            // Add sample activity if no feed data exists and this is a new room
+            if (feedData.length === 0 && !roomData.id) {
+                feedData.push({
+                    user: user.nickname,
+                    badge: 'Start',
+                    text: 'Joined the room!',
+                    time: 'Just now',
+                    img: '',
+                    hype: 0,
+                    sus: 0,
+                    flagged: false
+                });
+            }
 
             const renderFeed = () => {
                 if (!feedTab) return;
                 feedTab.innerHTML = '';
-            feedData.forEach((cardData, idx) => {
+                
+                if (feedData.length === 0) {
+                    const emptyState = document.createElement('div');
+                    emptyState.className = 'card stack';
+                    emptyState.innerHTML = `
+                        <div style="text-align: center; color: var(--muted);">
+                            <div style="font-size: 48px; margin-bottom: 12px;">📝</div>
+                            <div style="font-weight: 700;">No activity yet</div>
+                            <div class="muted">Complete tasks to see updates here!</div>
+                        </div>
+                    `;
+                    feedTab.appendChild(emptyState);
+                    return;
+                }
+                
+                feedData.forEach((cardData, idx) => {
                 const card = document.createElement('div');
                 const flagged = cardData.sus >= 2;
                 card.className = 'card stack';

@@ -154,11 +154,7 @@
                     
                     console.log('User creation result:', result);
 
-                    if (app.isFirebaseReady()) {
-                        app.showToast(`Welcome, ${payload.nickname}! (Firebase enabled)`);
-                    } else {
-                        app.showToast(`Welcome, ${payload.nickname}! (Offline mode)`);
-                    }
+                    app.showToast(`Welcome, ${payload.nickname}`);
                     
                     console.log('Redirecting to lobby...');
                     setTimeout(() => {

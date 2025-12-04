@@ -188,19 +188,27 @@ const app = (() => {
         localStorage.setItem(ROOM_KEY, JSON.stringify(roomData));
     };
 
+    const clearActiveRoom = () => {
+        localStorage.removeItem(ROOM_KEY);
+    };
+
     const createRoom = async (roomData) => {
         const user = getUser();
         if (!user) throw new Error('No user logged in');
 
+        // Generate unique 6-digit room code
+        const roomCode = await generateUniqueRoomCode();
+        console.log('Generated room code:', roomCode);
+
         if (isFirebaseReady && database && currentUser) {
             try {
-                // Create room in Firebase
-                const { ref, push, set } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
-                const roomsRef = ref(database, 'rooms');
-                const newRoomRef = push(roomsRef);
+                // Create room in Firebase with 6-digit code as key
+                const { ref, set } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+                const roomRef = ref(database, `rooms/${roomCode}`);
                 
                 const room = {
-                    id: newRoomRef.key,
+                    id: roomCode,
+                    code: roomCode,
                     ...roomData,
                     createdBy: currentUser.uid,
                     createdAt: Date.now(),
@@ -208,8 +216,8 @@ const app = (() => {
                     isActive: true
                 };
                 
-                await set(newRoomRef, room);
-                console.log('Room created in Firebase:', room);
+                await set(roomRef, room);
+                console.log('Room created in Firebase with code:', roomCode);
                 
                 saveActiveRoom(room);
                 return room;
@@ -221,7 +229,8 @@ const app = (() => {
         
         // Fallback to local creation
         const room = { 
-            id: generateId(), 
+            id: roomCode,
+            code: roomCode, 
             ...roomData, 
             createdAt: Date.now(),
             members: [user.userId]
@@ -233,66 +242,118 @@ const app = (() => {
     const getRooms = async () => {
         if (isFirebaseReady && database) {
             try {
-                const { ref, get, query, orderByChild, equalTo } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+                const { ref, get } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
                 const roomsRef = ref(database, 'rooms');
-                const activeRoomsQuery = query(roomsRef, orderByChild('isActive'), equalTo(true));
                 
-                const snapshot = await get(activeRoomsQuery);
+                const snapshot = await get(roomsRef);
                 if (snapshot.exists()) {
-                    const rooms = [];
-                    snapshot.forEach((childSnapshot) => {
-                        rooms.push({
-                            id: childSnapshot.key,
-                            ...childSnapshot.val()
-                        });
-                    });
-                    return rooms;
+                    const roomsData = snapshot.val();
+                    // Filter for active rooms on the client side to avoid indexing requirement
+                    return Object.keys(roomsData)
+                        .map(roomId => ({
+                            id: roomId,
+                            code: roomId,
+                            ...roomsData[roomId]
+                        }))
+                        .filter(room => room.isActive !== false); // Include rooms where isActive is true or undefined
                 }
             } catch (error) {
                 console.error('Error fetching rooms from Firebase:', error);
+                throw error;
             }
         }
         return [];
     };
 
-    const joinRoom = async (roomId) => {
+    const getRoom = async (roomId) => {
+        if (!isFirebaseReady || !database) {
+            throw new Error('Firebase not ready');
+        }
+
+        try {
+            const { ref, get } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+            const roomRef = ref(database, `rooms/${roomId}`);
+            const snapshot = await get(roomRef);
+            
+            if (snapshot.exists()) {
+                return {
+                    id: roomId,
+                    code: roomId,
+                    ...snapshot.val()
+                };
+            }
+            return null;
+        } catch (error) {
+            console.error('Error fetching room from Firebase:', error);
+            throw error;
+        }
+    };
+
+    const joinRoom = async (roomCode) => {
+        console.log('🔍 JOIN ROOM CALLED with code:', roomCode);
         const user = getUser();
         if (!user) throw new Error('No user logged in');
 
-        if (isFirebaseReady && database && currentUser) {
-            try {
-                const { ref, get, update } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
-                const roomRef = ref(database, `rooms/${roomId}`);
-                const snapshot = await get(roomRef);
-                
-                if (snapshot.exists()) {
-                    const roomData = snapshot.val();
-                    const members = roomData.members || [];
-                    
-                    if (!members.includes(currentUser.uid)) {
-                        members.push(currentUser.uid);
-                        await update(roomRef, { members });
-                    }
-                    
-                    const room = { id: roomId, ...roomData, members };
-                    saveActiveRoom(room);
-                    return room;
-                }
-            } catch (error) {
-                console.error('Error joining room in Firebase:', error);
-                showToast('Failed to join room');
-            }
+        // Validate room code format (6 digits)
+        if (!/^\d{6}$/.test(roomCode)) {
+            throw new Error('Room code must be 6 digits');
         }
-        
-        // Fallback
-        const room = { 
-            id: roomId, 
-            name: 'Joined Room',
-            createdAt: Date.now(),
-            members: [user.userId]
-        };
-        saveActiveRoom(room);
-        return room;
+
+        console.log('🔍 Attempting to join room:', roomCode);
+        console.log('🔍 Firebase ready:', isFirebaseReady);
+        console.log('🔍 Database available:', !!database);
+        console.log('🔍 Current user:', !!currentUser);
+
+        if (!isFirebaseReady || !database) {
+            console.log('🔍 Firebase not ready, throwing error');
+            throw new Error('Cannot join rooms - Firebase not ready');
+        }
+
+        try {
+            // Ensure we have an authenticated user
+            if (!currentUser) {
+                console.log('🔍 No Firebase user, signing in anonymously...');
+                const { signInAnonymously } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js');
+                const result = await signInAnonymously(auth);
+                currentUser = result.user;
+                console.log('🔍 Signed in anonymously for room joining:', currentUser.uid);
+            }
+            
+            const { ref, get, update } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+            const roomRef = ref(database, `rooms/${roomCode}`);
+            console.log('🔍 Checking if room exists at path:', `rooms/${roomCode}`);
+            
+            const snapshot = await get(roomRef);
+            console.log('🔍 Room snapshot exists:', snapshot.exists());
+            console.log('🔍 Room snapshot data:', snapshot.val());
+            
+            if (!snapshot.exists()) {
+                console.log('🔍 Room does not exist:', roomCode);
+                throw new Error(`Room ${roomCode} does not exist`);
+            }
+            
+            const roomData = snapshot.val();
+            console.log('🔍 Room data found:', roomData);
+            
+            // Check if room is active
+            if (roomData.isActive === false) {
+                throw new Error(`Room ${roomCode} is no longer active`);
+            }
+            
+            // ONLY read the room data, don't update anything
+            // The room creator will manage the member list
+            const room = { id: roomCode, code: roomCode, ...roomData };
+            saveActiveRoom(room);
+            console.log('🔍 Successfully validated and joined room:', roomCode);
+            return room;
+        } catch (error) {
+            console.error('🔍 Error joining room:', error);
+            // Re-throw our custom errors as-is
+            if (error.message.includes('does not exist') || error.message.includes('not ready') || error.message.includes('no longer active')) {
+                throw error;
+            }
+            throw new Error('Failed to join room: ' + error.message);
+        }
     };
 
     // Real-time room updates
@@ -316,19 +377,63 @@ const app = (() => {
         return () => {}; // Empty unsubscribe function for fallback
     };
 
+    // Generate 6-digit room code
+    const generateRoomCode = () => {
+        return Math.floor(100000 + Math.random() * 900000).toString();
+    };
+
+    // Check if room code exists
+    const checkRoomCodeExists = async (code) => {
+        if (isFirebaseReady && database) {
+            try {
+                const { ref, get } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+                const roomRef = ref(database, `rooms/${code}`);
+                const snapshot = await get(roomRef);
+                return snapshot.exists();
+            } catch (error) {
+                console.warn('Error checking room code:', error);
+                return false;
+            }
+        }
+        return false;
+    };
+
+    // Generate unique 6-digit room code
+    const generateUniqueRoomCode = async () => {
+        let attempts = 0;
+        let code;
+        
+        do {
+            code = generateRoomCode();
+            attempts++;
+            
+            // Safety check to prevent infinite loop
+            if (attempts > 10) {
+                console.warn('Too many attempts to generate unique code, using fallback');
+                return generateRoomCode(); // Return any code as fallback
+            }
+        } while (await checkRoomCodeExists(code));
+        
+        return code;
+    };
+
     const generateId = () => `user_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 6)}`;
 
     return {
         showToast,
         generateId,
+        generateRoomCode,
+        generateUniqueRoomCode,
         saveUser,
         getUser,
         clearUser,
         requireUser,
         getActiveRoom,
         saveActiveRoom,
+        clearActiveRoom,
         createRoom,
         getRooms,
+        getRoom,
         joinRoom,
         subscribeToRoom,
         initializeFirebase,
