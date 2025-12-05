@@ -169,9 +169,13 @@
                         console.log('✅ EXISTING USER AUTHENTICATED:', existingUser.nickname);
                         app.showToast(`Welcome back, ${existingUser.nickname}!`);
                         
+                        // Wait a moment for room data to be loaded asynchronously
+                        console.log('⏳ Waiting for room data to load...');
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        
                         // Check if they have an active room
                         const activeRoom = app.getActiveRoom();
-                        console.log('Active room check:', activeRoom);
+                        console.log('Active room check after delay:', activeRoom);
                         window.location.href = activeRoom ? 'room.html' : 'lobby.html';
                         return;
                     }

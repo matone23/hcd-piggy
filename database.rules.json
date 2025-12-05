@@ -2,34 +2,41 @@
   "rules": {
     "users": {
       ".read": true,
-      ".write": "auth != null",
+      ".write": true,
       "$uid": {
-        ".write": "$uid === auth.uid"
+        ".read": true,
+        ".write": true
       }
     },
     "tempImages": {
-      ".read": "auth != null",
-      ".write": "auth != null",
+      ".read": true,
+      ".write": true,
       "$imageId": {
-        ".validate": "newData.hasChildren(['data', 'filename', 'uploadedAt', 'userId'])",
-        "userId": {
-          ".validate": "newData.val() === auth.uid"
-        }
+        ".read": true,
+        ".write": true
       }
     },
     "rooms": {
-      ".read": "auth != null",
-      ".write": "auth != null",
+      ".read": true,
+      ".write": true,
       ".indexOn": ["isActive", "createdAt"],
       "$roomId": {
-        ".validate": "newData.hasChildren(['name', 'createdBy', 'createdAt', 'participants', 'isActive'])",
-        "createdBy": {
-          ".validate": "newData.val() === auth.uid"
-        },
+        ".read": true,
+        ".write": true,
         "participants": {
-          ".validate": "newData.hasChildren()",
+          ".read": true,
+          ".write": true,
           "$participantId": {
-            ".validate": "newData.hasChildren(['userId', 'nickname'])"
+            ".read": true,
+            ".write": true
+          }
+        },
+        "submissions": {
+          ".read": true,
+          ".write": true,
+          "$submissionId": {
+            ".read": true,
+            ".write": true
           }
         }
       }

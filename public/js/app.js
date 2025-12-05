@@ -112,13 +112,91 @@ const app = (() => {
                         // Check if PIN matches
                         if (userWithNickname.pin === pin) {
                             console.log('✅ PERFECT MATCH - nickname and PIN correct');
+                            console.log('🔐 Existing user Firebase UID:', correctUid);
                             
-                            // Update localStorage with existing user
+                            // Set the current user to the existing Firebase UID (don't create new auth)
+                            currentUser = { uid: correctUid };
+                            
+                            // Update localStorage with existing user (using correct Firebase UID)
                             localStorage.setItem(STORAGE_KEY, JSON.stringify({ 
-                                userId: correctUid, 
+                                userId: correctUid, // Use the existing Firebase UID
                                 nickname: userWithNickname.nickname, 
                                 pin: userWithNickname.pin 
                             }));
+                            
+                            console.log('✅ Set currentUser to existing Firebase UID:', correctUid);
+                            
+                            // Check for existing room membership and load room data
+                            console.log('🔍 Checking for existing room membership for user:', correctUid);
+                            try {
+                                const { ref: roomsRef, get: getRooms } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+                                
+                                console.log('📡 Attempting to read rooms from Firebase...');
+                                const allRoomsRef = roomsRef(database, 'rooms');
+                                const roomsSnapshot = await getRooms(allRoomsRef);
+                                
+                                console.log('📊 Rooms snapshot exists:', roomsSnapshot.exists());
+                                
+                                if (roomsSnapshot.exists()) {
+                                    const allRooms = roomsSnapshot.val();
+                                    const roomCount = Object.keys(allRooms).length;
+                                    console.log(`📋 Found ${roomCount} total rooms in database`);
+                                    
+                                    // Find room where this user is a participant
+                                    let userRoom = null;
+                                    let roomsChecked = 0;
+                                    
+                                    for (const [roomId, room] of Object.entries(allRooms)) {
+                                        roomsChecked++;
+                                        console.log(`🔍 Checking room ${roomsChecked}/${roomCount}: ${roomId}`, {
+                                            hasRoom: !!room,
+                                            hasParticipants: !!(room && room.participants),
+                                            participantCount: room && room.participants ? Object.keys(room.participants).length : 0,
+                                            participantIds: room && room.participants ? Object.keys(room.participants) : [],
+                                            lookingForUserId: correctUid
+                                        });
+                                        
+                                        if (room && room.participants && room.participants[correctUid]) {
+                                            console.log('🏠 ✅ FOUND existing room for user:', roomId, room.name);
+                                            userRoom = {
+                                                id: roomId,
+                                                name: room.name,
+                                                mode: room.mode,
+                                                participants: room.participants,
+                                                createdAt: room.createdAt,
+                                                code: roomId // Room ID is the code
+                                            };
+                                            break;
+                                        }
+                                    }
+                                    
+                                    if (userRoom) {
+                                        console.log('✅ Loading existing room data into localStorage:', userRoom.name);
+                                        localStorage.setItem(ROOM_KEY, JSON.stringify(userRoom));
+                                        console.log('✅ Room data saved successfully');
+                                    } else {
+                                        console.log('📝 No existing room found for user after checking all rooms');
+                                        // Clear any stale room data
+                                        localStorage.removeItem(ROOM_KEY);
+                                    }
+                                } else {
+                                    console.log('📝 No rooms exist in database');
+                                    localStorage.removeItem(ROOM_KEY);
+                                }
+                                
+                                console.log('✅ Room loading process completed successfully');
+                                
+                            } catch (roomError) {
+                                console.error('❌ Error during room loading process:', roomError);
+                                console.error('Error details:', {
+                                    message: roomError.message,
+                                    code: roomError.code,
+                                    stack: roomError.stack
+                                });
+                                
+                                // Don't throw the error, just log it and continue
+                                console.warn('Continuing authentication without room data due to error');
+                            }
                             
                             // Update last seen
                             try {
@@ -404,6 +482,63 @@ const app = (() => {
         }
     };
 
+    const getUserRooms = async (userId) => {
+        // Instead of reading all rooms (which may be permission denied), 
+        // check the user's stored data for room membership
+        console.log('🔍 Getting user rooms for:', userId);
+        
+        if (!isFirebaseReady || !database) {
+            console.warn('Firebase not ready for getUserRooms');
+            return [];
+        }
+
+        try {
+            // Try to read from the user's own data first (more likely to have permission)
+            const { ref, get } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+            const userRef = ref(database, `users/${userId}`);
+            const userSnapshot = await get(userRef);
+            
+            if (userSnapshot.exists()) {
+                const userData = userSnapshot.val();
+                console.log('👤 User data from Firebase:', userData);
+                
+                // Check if user data contains room information
+                if (userData.activeRoomId) {
+                    console.log('🏠 Found activeRoomId in user data:', userData.activeRoomId);
+                    
+                    // Try to get the specific room data
+                    const roomRef = ref(database, `rooms/${userData.activeRoomId}`);
+                    const roomSnapshot = await get(roomRef);
+                    
+                    if (roomSnapshot.exists()) {
+                        const room = roomSnapshot.val();
+                        return [{
+                            id: userData.activeRoomId,
+                            name: room.name,
+                            mode: room.mode,
+                            participants: room.participants,
+                            createdAt: room.createdAt,
+                            code: userData.activeRoomId
+                        }];
+                    }
+                }
+            }
+            
+            // Fallback: Return empty array if no room found
+            console.log('📝 No active room found in user data');
+            return [];
+            
+        } catch (error) {
+            console.error('Error getting user rooms:', error);
+            // If we get permission denied, just return empty array
+            if (error.message && error.message.includes('Permission denied')) {
+                console.warn('Permission denied reading Firebase data - continuing without room check');
+                return [];
+            }
+            return [];
+        }
+    };
+
     const saveActiveRoom = (roomData) => {
         localStorage.setItem(ROOM_KEY, JSON.stringify(roomData));
     };
@@ -437,13 +572,20 @@ const app = (() => {
             hasCurrentUser: !!currentUser
         });
 
-        // Ensure we have an authenticated user
+        // Ensure we have an authenticated user - use existing UID if available
         if (!currentUser) {
-            console.log('🔐 No current user, signing in anonymously...');
-            const { signInAnonymously } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js');
-            const result = await signInAnonymously(auth);
-            currentUser = result.user;
-            console.log('✅ Signed in anonymously:', currentUser.uid);
+            // Check if we have an existing user in localStorage with Firebase UID
+            const existingUser = getUser();
+            if (existingUser && existingUser.userId) {
+                console.log('🔐 Using existing user UID for room creation:', existingUser.userId);
+                currentUser = { uid: existingUser.userId };
+            } else {
+                console.log('🔐 No existing user, signing in anonymously...');
+                const { signInAnonymously } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js');
+                const result = await signInAnonymously(auth);
+                currentUser = result.user;
+                console.log('✅ Signed in anonymously:', currentUser.uid);
+            }
         }
         
         console.log('🔥 Creating room in Firebase...');
@@ -588,13 +730,20 @@ const app = (() => {
         }
 
         try {
-            // Ensure we have an authenticated user
+            // Ensure we have an authenticated user - use existing UID if available
             if (!currentUser) {
-                console.log('🔍 No Firebase user, signing in anonymously...');
-                const { signInAnonymously } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js');
-                const result = await signInAnonymously(auth);
-                currentUser = result.user;
-                console.log('🔍 Signed in anonymously for room joining:', currentUser.uid);
+                // Check if we have an existing user in localStorage with Firebase UID
+                const existingUser = getUser();
+                if (existingUser && existingUser.userId) {
+                    console.log('🔐 Using existing user UID for room join:', existingUser.userId);
+                    currentUser = { uid: existingUser.userId };
+                } else {
+                    console.log('🔍 No existing user, signing in anonymously...');
+                    const { signInAnonymously } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js');
+                    const result = await signInAnonymously(auth);
+                    currentUser = result.user;
+                    console.log('✅ Signed in anonymously for room join:', currentUser.uid);
+                }
             }
             
             const { ref, get, update } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
@@ -724,6 +873,7 @@ const app = (() => {
         clearUser,
         requireUser,
         getActiveRoom,
+        getUserRooms,
         saveActiveRoom,
         clearActiveRoom,
         createRoom,

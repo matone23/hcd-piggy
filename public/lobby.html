@@ -126,12 +126,23 @@
                 // User will be redirected by requireUser if no data found
                 return;
             }
+            
+            // Get initial active room from localStorage
+            let activeRoom = app.getActiveRoom();
+            console.log('🏠 Initial active room check:', activeRoom);
+            
+            // If no active room found, we'll rely on localStorage only to avoid permission issues
+            // The authenticateUser function should have loaded room data if it exists
+            if (!activeRoom) {
+                console.log('📝 No active room found in localStorage');
+            } else {
+                console.log('✅ Active room found:', activeRoom.name);
+            }
             const greeting = document.getElementById('greeting');
             const createBtn = document.getElementById('createBtn');
             const joinBtn = document.getElementById('joinBtn');
             const joinCode = document.getElementById('join-code');
             const logoutBtn = document.getElementById('logoutBtn');
-            const activeRoom = app.getActiveRoom();
             
             // Get UI elements
             const lobbyContent = document.getElementById('lobbyContent');
@@ -224,11 +235,16 @@
                 greeting.textContent = `Hi, ${user.nickname} ${firebaseStatus}`;
             }
 
-            createBtn?.addEventListener('click', () => {
-                if (activeRoom && activeRoom.id) {
+            createBtn?.addEventListener('click', async () => {
+                // Check localStorage for active room
+                const hasActiveRoom = activeRoom && activeRoom.id;
+                
+                if (hasActiveRoom) {
                     app.showToast('You already have an active room. Go to your room or logout to create a new one.');
                     return;
                 }
+                
+                console.log('🎨 No active room found, proceeding to create new room');
                 window.location.href = 'create.html';
             });
 
