@@ -20,6 +20,18 @@
     </header>
 
     <main class="page" style="padding-top:16px;">
+        <!-- Challenge Progress Section -->
+        <div id="dayCounterSection" class="card" style="margin-bottom: 12px; padding: 12px; background: #f8f9fa; border: 1px solid #dee2e6;">
+            <div style="text-align: center;">
+                <div id="dayCounterTitle" style="font-size: 12px; color: #6c757d; margin-bottom: 4px;">Challenge Progress</div>
+                <div id="dayCounterText" style="font-size: 18px; font-weight: 700; color: #495057; margin-bottom: 8px;">Loading...</div>
+                <div id="dayCounterProgress" style="width: 100%; height: 6px; background: #dee2e6; border-radius: 3px; overflow: hidden;">
+                    <div id="dayCounterBar" style="height: 100%; background: linear-gradient(90deg, #00E054 0%, #00b045 100%); width: 0%; transition: width 0.3s ease;"></div>
+                </div>
+                <div id="dayCounterSubtext" style="font-size: 12px; color: #6c757d; margin-top: 6px;">Keep up the momentum!</div>
+            </div>
+        </div>
+        
         <!-- Room Code Section -->
         <div class="card" style="margin-bottom: 12px; padding: 12px; background: #f8f9fa; border: 1px solid #dee2e6;">
             <div style="text-align: center;">
@@ -276,6 +288,7 @@
                         
                         // Update UI with fresh data
                         updateParticipantCount();
+                        updateDayCounter();
                         refreshRanking();
                         updateFeed();
                         
@@ -330,6 +343,7 @@
                                 console.log('👥 Participants changed, updating UI');
                                 participants = newParticipants;
                                 updateParticipantCount();
+                                updateDayCounter();
                                 refreshRanking();
                             }
                         }
@@ -411,6 +425,65 @@
                     renderFeed();
                 }
             };
+            
+            // Day Counter functionality
+            const updateDayCounter = () => {
+                const dayCounterText = document.getElementById('dayCounterText');
+                const dayCounterBar = document.getElementById('dayCounterBar');
+                const dayCounterSubtext = document.getElementById('dayCounterSubtext');
+                
+                if (!dayCounterText || !roomData) return;
+                
+                if (mode === 'routine') {
+                    // Calculate days since room creation
+                    const startDate = new Date(roomData.createdAt || Date.now());
+                    const today = new Date();
+                    const daysSinceStart = Math.floor((today - startDate) / (1000 * 60 * 60 * 24)) + 1;
+                    const duration = roomData.duration || 30;
+                    const daysLeft = Math.max(0, duration - daysSinceStart + 1);
+                    const progressPercent = Math.min(100, (daysSinceStart / duration) * 100);
+                    
+                    // Update progress bar
+                    if (dayCounterBar) {
+                        dayCounterBar.style.width = `${progressPercent}%`;
+                        
+                        // Change color based on progress
+                        if (progressPercent >= 90) {
+                            dayCounterBar.style.background = 'linear-gradient(90deg, #ffd700 0%, #ffed4e 100%)';
+                        } else if (progressPercent >= 70) {
+                            dayCounterBar.style.background = 'linear-gradient(90deg, #ff9500 0%, #ffad33 100%)';
+                        } else {
+                            dayCounterBar.style.background = 'linear-gradient(90deg, #00E054 0%, #00b045 100%)';
+                        }
+                    }
+                    
+                    // Update text based on progress
+                    if (daysSinceStart === 1) {
+                        dayCounterText.textContent = `🌟 Day ${daysSinceStart} of ${duration}`;
+                        if (dayCounterSubtext) dayCounterSubtext.textContent = "Let's begin this journey!";
+                    } else if (daysLeft > 1) {
+                        dayCounterText.textContent = `🔥 Day ${daysSinceStart} of ${duration}`;
+                        if (dayCounterSubtext) dayCounterSubtext.textContent = `${daysLeft} days remaining - keep going!`;
+                    } else if (daysLeft === 1) {
+                        dayCounterText.textContent = `⚡ Day ${daysSinceStart} of ${duration}`;
+                        if (dayCounterSubtext) dayCounterSubtext.textContent = "Final day - finish strong!";
+                    } else if (daysSinceStart > duration) {
+                        dayCounterText.textContent = `🎉 Challenge Complete!`;
+                        if (dayCounterSubtext) dayCounterSubtext.textContent = `${duration} days finished - amazing work!`;
+                    } else {
+                        dayCounterText.textContent = `🔥 Day ${daysSinceStart} of ${duration}`;
+                        if (dayCounterSubtext) dayCounterSubtext.textContent = "Keep up the momentum!";
+                    }
+                } else {
+                    // One-day challenge
+                    dayCounterText.textContent = '⚡ One-Day Challenge';
+                    if (dayCounterSubtext) dayCounterSubtext.textContent = 'Complete your goals today!';
+                    if (dayCounterBar) {
+                        dayCounterBar.style.width = '100%';
+                        dayCounterBar.style.background = 'linear-gradient(90deg, #ff6b6b 0%, #ee5a52 100%)';
+                    }
+                }
+            };
 
             // Get DOM elements
             const fileCapture = document.getElementById('fileCapture');
@@ -452,6 +525,7 @@
             
             // Show initial UI state
             updateParticipantCount();
+            updateDayCounter();
             
             // Load Firebase data asynchronously
             loadFirebaseData();
@@ -1244,62 +1318,6 @@
                     firebaseUser: app.getCurrentUser()?.uid,
                     hasSubmissions: !!(roomData.submissions && Object.keys(roomData.submissions).length > 0)
                 });
-
-            const streak = (() => {
-                if (mode === 'routine') {
-                    // Calculate days since room creation
-                    const startDate = new Date(roomData.createdAt || Date.now());
-                    const today = new Date();
-                    const daysSinceStart = Math.floor((today - startDate) / (1000 * 60 * 60 * 24)) + 1;
-                    const duration = roomData.duration || 30;
-                    const daysLeft = Math.max(0, duration - daysSinceStart + 1);
-                    
-                    console.log('Streak calculation:', {
-                        startDate: startDate.toISOString(),
-                        today: today.toISOString(),
-                        daysSinceStart,
-                        duration,
-                        daysLeft,
-                        roomCreatedAt: roomData.createdAt
-                    });
-                    
-                    if (daysSinceStart === 1) {
-                        return `🌟 Day ${daysSinceStart} of ${duration} - Let's begin!`;
-                    } else if (daysLeft > 1) {
-                        return `🔥 Day ${daysSinceStart} of ${duration} - ${daysLeft} days to go!`;
-                    } else if (daysLeft === 1) {
-                        return `⚡ Final day! Day ${daysSinceStart} of ${duration}`;
-                    } else if (daysSinceStart > duration) {
-                        return `🎉 Challenge complete! ${duration} days finished`;
-                    } else {
-                        return `🔥 Day ${daysSinceStart} of ${duration} - Keep going!`;
-                    }
-                } else {
-                    const deadline = roomData.dday;
-                    if (deadline) {
-                        const deadlineDate = new Date(deadline);
-                        const now = new Date();
-                        const timeDiff = deadlineDate - now;
-                        const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
-                        
-                        if (daysLeft > 1) {
-                            return `⚡ ${daysLeft} days until deadline (${deadlineDate.toLocaleDateString()})`;
-                        } else if (daysLeft === 1) {
-                            return `🚨 Final day! Deadline: ${deadlineDate.toLocaleDateString()}`;
-                        } else if (daysLeft === 0) {
-                            return `⏰ Deadline is today! (${deadlineDate.toLocaleDateString()})`;
-                        } else {
-                            return `⏳ Deadline passed (${deadlineDate.toLocaleDateString()})`;
-                        }
-                    }
-                    return `⚡ One-day challenge in progress`;
-                }
-            })();
-
-            const streakRow = document.createElement('div');
-            streakRow.className = 'muted';
-            streakRow.textContent = streak;
-            rankTab.appendChild(streakRow);
 
             const sorted = participants.slice().map(p => {
                 // Calculate actual points from approved submissions using task points

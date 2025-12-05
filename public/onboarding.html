@@ -370,7 +370,6 @@
                         mode,
                         color: selectedColor,
                         moneyPledge: true,
-                        goals: missionData.goals,
                         nickname: user.nickname,
                         completedAt: Date.now(),
                         onboardingComplete: true // Add flag to indicate onboarding is done
@@ -378,7 +377,6 @@
 
                     console.log('Mission data:', missionData);
                     console.log('Final payload to save:', payload);
-                    console.log('Goals being saved:', payload.goals);
                     console.log('Room ID being used:', roomId);
 
                     // Save to localStorage first
@@ -406,7 +404,7 @@
                                     userId: firebaseUserId,
                                     nickname: user.nickname,
                                     color: selectedColor,
-                                    goals: payload.goals, // Save goals ONLY at participant level
+                                    goals: user.goals, // Save goals ONLY at participant level
                                     score: 0,
                                     rate: 0,
                                     joinedAt: Date.now(),
