@@ -109,15 +109,23 @@
                 // Initialize Firebase (might fail with cookies disabled)
                 await app.initializeFirebase();
                 console.log('Firebase ready in lobby:', app.isFirebaseReady());
+                
             } catch (error) {
                 console.error('Failed to load app module or Firebase:', error);
                 if (!storageAvailable) {
                     alert('This app requires cookies and localStorage to function. Please enable cookies and refresh the page.');
                     return;
+                } else {
+                    console.warn('Continuing without Firebase initialization');
                 }
             }
 
+            // Check for user - simplified logic to avoid loops
             const user = app.requireUser();
+            if (!user) {
+                // User will be redirected by requireUser if no data found
+                return;
+            }
             const greeting = document.getElementById('greeting');
             const createBtn = document.getElementById('createBtn');
             const joinBtn = document.getElementById('joinBtn');

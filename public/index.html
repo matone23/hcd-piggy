@@ -182,20 +182,46 @@
                     const userId = app.generateId();
                     console.log('Generated user ID:', userId);
                     
+                    console.log('Attempting to save user with data:', {
+                        userId,
+                        nickname: payload.nickname,
+                        hasPin: !!payload.pin
+                    });
+                    
                     const result = await app.saveUser({ 
                         userId,
                         nickname: payload.nickname,
                         pin: payload.pin
                     });
                     
-                    console.log('User creation result:', result);
-
-                    app.showToast(`Welcome, ${payload.nickname}`);
+                    console.log('✅ User creation result:', result);
                     
-                    console.log('Redirecting to lobby...');
+                    // Verify user was saved properly
+                    const savedUser = app.getUser();
+                    console.log('Verification - saved user:', savedUser);
+                    
+                    if (!result || !result.nickname) {
+                        throw new Error('User creation failed - no result returned');
+                    }
+
+                    app.showToast(`Welcome, ${result.nickname}!`);
+                    
+                    console.log('🔄 Preparing redirect to lobby...');
+                    
+                    // Ensure data is saved before redirect
                     setTimeout(() => {
-                        window.location.href = 'lobby.html';
-                    }, 500);
+                        // Final verification before redirect
+                        const finalUser = app.getUser();
+                        console.log('🔍 Final user check before redirect:', finalUser);
+                        
+                        if (finalUser && finalUser.nickname) {
+                            console.log('✅ User verified, redirecting to lobby...');
+                            window.location.href = 'lobby.html';
+                        } else {
+                            console.error('❌ User verification failed before redirect');
+                            app.showToast('Account created but verification failed. Please refresh and try logging in.');
+                        }
+                    }, 1000); // Increased from 500ms to 1000ms
                 } catch (error) {
                     console.error('❌ Login error:', error);
                     console.error('Error details:', {

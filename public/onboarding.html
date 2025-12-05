@@ -397,6 +397,14 @@
                             console.log('Current room in Firebase before update:', currentRoom);
                             
                             // Update only participant-specific data, NOT room-level goals
+                            const participantGoals = mode === 'routine'
+                                ? [
+                                    { label: 'Min', desc: routineInputs.min?.value?.trim(), points: 2 },
+                                    { label: 'More', desc: routineInputs.more?.value?.trim(), points: 5 },
+                                    { label: 'Max', desc: routineInputs.max?.value?.trim(), points: 10 }
+                                  ]
+                                : todos.map(todo => ({ ...todo, done: false }));
+                                
                             const firebaseUpdates = {
                                 mode: mode,
                                 updatedAt: Date.now(),
@@ -404,7 +412,7 @@
                                     userId: firebaseUserId,
                                     nickname: user.nickname,
                                     color: selectedColor,
-                                    goals: user.goals, // Save goals ONLY at participant level
+                                    goals: participantGoals, // Save the actual goals from the form
                                     score: 0,
                                     rate: 0,
                                     joinedAt: Date.now(),
@@ -424,10 +432,26 @@
                                 console.log('Note: Could not clean up room-level goals:', cleanupError.message);
                             }
                             
-                            // Verify the save worked
+                            // Verify the save worked - CRITICAL for preventing loops
                             const verifyRoom = await app.getRoom(roomId);
                             console.log('Verification - room after save:', verifyRoom);
-                            console.log('Verification - participant data:', verifyRoom.participants ? verifyRoom.participants[firebaseUserId] : 'No participant data');
+                            const participantData = verifyRoom.participants ? verifyRoom.participants[firebaseUserId] : null;
+                            console.log('Verification - participant data:', participantData);
+                            
+                            // Verify onboarding completion was saved
+                            if (!participantData || !participantData.onboardingComplete) {
+                                console.error('❌ ONBOARDING COMPLETE FLAG NOT SAVED! Retrying...');
+                                // Retry the critical onboarding flag
+                                await app.updateRoom(roomId, {
+                                    [`participants/${firebaseUserId}/onboardingComplete`]: true
+                                });
+                                console.log('🔄 Retried setting onboarding complete flag');
+                                
+                                // Verify again
+                                const retryVerify = await app.getRoom(roomId);
+                                const retryParticipant = retryVerify.participants ? retryVerify.participants[firebaseUserId] : null;
+                                console.log('Retry verification - onboardingComplete:', retryParticipant ? retryParticipant.onboardingComplete : 'PARTICIPANT NOT FOUND');
+                            }
                             
                             // Refresh room data from Firebase
                             const updatedRoom = await app.getRoom(roomId);
@@ -456,9 +480,12 @@
                     // Clear any conflicting localStorage to prevent loops
                     localStorage.removeItem('piggy-habit-draft');
                     
+                    // Wait longer to ensure Firebase save is complete before redirecting
+                    console.log('🔄 Waiting for save completion before redirect...');
                     setTimeout(() => {
+                        console.log('✅ Redirecting to room.html after onboarding completion');
                         window.location.href = 'room.html';
-                    }, 500);
+                    }, 1500); // Increased from 500ms to 1500ms
                 } catch (error) {
                     console.error('Error saving pledge:', error);
                     app.showToast('Failed to save pledge. Please try again.');

@@ -93,61 +93,64 @@ const app = (() => {
                 if (snapshot.exists()) {
                     const existingUsers = snapshot.val();
                     console.log('📊 Found existing users in database:', Object.keys(existingUsers).length);
-                    console.log('📋 All users in database:', Object.entries(existingUsers).map(([uid, user]) => ({
-                        uid,
-                        nickname: user?.nickname,
-                        hasPin: !!user?.pin,
-                        pinPrefix: user?.pin ? user.pin.substring(0, 2) + '**' : 'NO PIN'
-                    })));
                     
-                    // Look for user with matching nickname and PIN
+                    // Look for user with matching nickname first
+                    let userWithNickname = null;
+                    let correctUid = null;
+                    
                     for (const [uid, user] of Object.entries(existingUsers)) {
-                        if (user && user.nickname && user.pin) {
-                            console.log(`🔍 Checking user: ${user.nickname} with PIN ${user.pin.substring(0, 2)}** against ${nickname} with PIN ${pin.substring(0, 2)}**`);
+                        if (user && user.nickname && user.nickname.toLowerCase() === nickname.toLowerCase()) {
+                            userWithNickname = user;
+                            correctUid = uid;
+                            break;
+                        }
+                    }
+                    
+                    if (userWithNickname) {
+                        console.log('🔍 Found existing user with nickname:', nickname);
+                        
+                        // Check if PIN matches
+                        if (userWithNickname.pin === pin) {
+                            console.log('✅ PERFECT MATCH - nickname and PIN correct');
                             
-                            const nicknameMatch = user.nickname.toLowerCase() === nickname.toLowerCase();
-                            const pinMatch = user.pin === pin;
+                            // Update localStorage with existing user
+                            localStorage.setItem(STORAGE_KEY, JSON.stringify({ 
+                                userId: correctUid, 
+                                nickname: userWithNickname.nickname, 
+                                pin: userWithNickname.pin 
+                            }));
                             
-                            console.log(`📝 Match results: nickname=${nicknameMatch}, pin=${pinMatch}`);
-                            
-                            if (nicknameMatch && pinMatch) {
-                                console.log('✅ EXACT MATCH FOUND for existing user:', user.nickname);
-                                
-                                // Update localStorage with existing user
-                                localStorage.setItem(STORAGE_KEY, JSON.stringify({ 
-                                    userId: uid, 
-                                    nickname: user.nickname, 
-                                    pin: user.pin 
-                                }));
-                                
-                                // Update last seen
-                                try {
-                                    const { ref: updateRef, update } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
-                                    const userRef = updateRef(database, `users/${uid}`);
-                                    await update(userRef, { lastSeen: Date.now() });
-                                    console.log('📅 Updated last seen for existing user');
-                                } catch (updateError) {
-                                    console.warn('Could not update last seen:', updateError);
-                                }
-                                
-                                currentUser = { uid };
-                                return { userId: uid, nickname: user.nickname, isExisting: true };
-                            } else if (nicknameMatch) {
-                                console.log('⚠️ Found nickname but PIN mismatch:', user.nickname);
-                                console.log(`Expected PIN: ${pin}, Found PIN: ${user.pin}`);
+                            // Update last seen
+                            try {
+                                const { ref: updateRef, update } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+                                const userRef = updateRef(database, `users/${correctUid}`);
+                                await update(userRef, { lastSeen: Date.now() });
+                                console.log('📅 Updated last seen for existing user');
+                            } catch (updateError) {
+                                console.warn('Could not update last seen:', updateError);
                             }
+                            
+                            currentUser = { uid: correctUid };
+                            return { userId: correctUid, nickname: userWithNickname.nickname, isExisting: true };
+                        } else {
+                            console.log('❌ WRONG PIN for existing nickname:', nickname);
+                            throw new Error(`Username "${nickname}" already exists. Please enter the correct PIN or choose a different username.`);
                         }
                     }
                 } else {
                     console.log('📂 No users found in Firebase database (empty)');
                 }
                 
-                console.log('🆕 No existing user found with those credentials');
-                return null; // No existing user found
+                console.log('🆕 No existing user found with that nickname - can create new account');
+                return null; // No existing user found, safe to create new one
                 
             } catch (error) {
+                // If it's our custom error about wrong PIN, re-throw it
+                if (error.message.includes('already exists')) {
+                    throw error;
+                }
                 console.error('❌ Error checking for existing users:', error);
-                return null; // Continue to create new user
+                return null; // Continue to create new user on other errors
             }
         } else {
             console.warn('⚠️ Firebase not ready or database not available');
@@ -160,132 +163,140 @@ const app = (() => {
         console.log('saveUser called with:', { userId, nickname, pin });
         console.log('Firebase ready status:', { isReady: isFirebaseReady, hasDatabase: !!database });
         
-        // Check for nickname uniqueness if Firebase is available
-        if (isFirebaseReady && database) {
-            try {
-                console.log('🔍 Checking nickname uniqueness for:', nickname);
-                const { ref, get } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
-                const usersRef = ref(database, 'users');
-                const snapshot = await get(usersRef);
-                
-                if (snapshot.exists()) {
-                    const existingUsers = Object.values(snapshot.val());
-                    console.log('📊 Found', existingUsers.length, 'existing users to check against');
-                    
-                    // Check for nickname conflicts (same nickname with different PIN)
-                    const existingUserWithNickname = existingUsers.find(user => {
-                        // Safe nickname comparison with null/undefined checks
-                        if (!user || !user.nickname || !nickname) {
-                            return false;
-                        }
-                        try {
-                            const userNick = user.nickname.toLowerCase();
-                            const checkNick = nickname.toLowerCase();
-                            console.log(`Comparing: "${checkNick}" vs "${userNick}"`);
-                            return userNick === checkNick;
-                        } catch (error) {
-                            console.warn('Could not check nickname equality:', error);
-                            return false;
-                        }
-                    });
-                    
-                    if (existingUserWithNickname) {
-                        // Check if it's the same user (same PIN) or different user
-                        if (existingUserWithNickname.pin !== pin) {
-                            console.error('❌ Nickname exists with different PIN:', nickname);
-                            throw new Error(`Username "${nickname}" is already taken. Please choose a different name or use the correct PIN.`);
-                        } else {
-                            // This should have been caught by authenticateUser, but just in case
-                            console.log('🔄 Same nickname and PIN found - should have been authenticated already');
-                            throw new Error(`You already have an account with this nickname. Please try logging in again.`);
-                        }
-                    }
-                } else {
-                    console.log('📝 No existing users found in database');
-                }
-                console.log('✅ Nickname is unique, proceeding...');
-            } catch (error) {
-                if (error.message.includes('already taken')) {
-                    console.error('🚫 Throwing nickname conflict error');
-                    throw error; // Re-throw nickname conflict errors
-                }
-                console.warn('Could not check nickname uniqueness (connection issue):', error);
-                // Continue anyway if it's just a connection issue
-            }
-        } else {
-            console.warn('⚠️ Firebase not ready, skipping nickname uniqueness check');
+        // At this point, authenticateUser should have already verified no conflicts exist
+        console.log('✅ Creating new user account (nickname conflict check passed)');
+        
+        // Firebase is REQUIRED - but handle network issues gracefully
+        if (!isFirebaseReady || !database) {
+            throw new Error('Firebase is required but not available. Please check your internet connection and try again.');
         }
         
-        // Always save to localStorage first for immediate access
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ userId, nickname, pin }));
-        console.log('User saved to localStorage');
-        
-        if (isFirebaseReady && database) {
-            try {
-                console.log('Attempting Firebase save...');
-                
-                // Sign in anonymously if not authenticated
-                if (!currentUser) {
-                    console.log('No current user, signing in anonymously...');
+        try {
+            console.log('Attempting Firebase authentication and save...');
+            
+            // MANDATORY: Sign in anonymously if not authenticated
+            if (!currentUser) {
+                console.log('No current user, signing in anonymously...');
+                try {
                     const { signInAnonymously } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js');
                     const result = await signInAnonymously(auth);
                     currentUser = result.user;
-                    console.log('Signed in anonymously:', currentUser.uid);
+                    console.log('✅ Signed in anonymously with UID:', currentUser.uid);
+                } catch (authError) {
+                    console.error('❌ Anonymous authentication failed:', authError);
+                    
+                    // Handle network-specific errors with temporary fallback
+                    if (authError.code === 'auth/network-request-failed') {
+                        console.warn('🌐 Network error detected - creating temporary offline user');
+                        
+                        // Create a temporary user with offline flag
+                        const tempUserId = `temp_${userId}_${Date.now()}`;
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify({ 
+                            userId: tempUserId, 
+                            nickname, 
+                            pin,
+                            isTemporary: true,
+                            createdAt: Date.now()
+                        }));
+                        
+                        console.log('⚠️ Created temporary offline user - will sync with Firebase when connection is restored');
+                        return { userId: tempUserId, nickname, isTemporary: true };
+                    } else {
+                        throw authError; // Re-throw other auth errors
+                    }
                 }
+            }
+            
+            // Save user to Realtime Database (PRIMARY operation)
+            console.log('Importing database functions...');
+            const { ref, set, get } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+            
+            console.log('Creating user reference for Firebase UID:', currentUser.uid);
+            const userRef = ref(database, `users/${currentUser.uid}`);
+            
+            const userData = {
+                uid: currentUser.uid,
+                nickname: nickname,
+                pin: pin,
+                createdAt: Date.now(),
+                lastSeen: Date.now()
+            };
+            
+            console.log('Saving user data to Firebase (PRIMARY):', {
+                uid: userData.uid,
+                nickname: userData.nickname,
+                hasPin: !!userData.pin,
+                createdAt: new Date(userData.createdAt).toISOString()
+            });
+            
+            await set(userRef, userData);
+            console.log('✅ User saved to Firebase successfully!');
+            
+            // Verify the save worked
+            const verifySnapshot = await get(userRef);
+            if (!verifySnapshot.exists()) {
+                throw new Error('Firebase save verification failed - user not found after save');
+            }
+            console.log('✅ Firebase save verified successfully');
+            
+            // ONLY update localStorage AFTER successful Firebase save
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ 
+                userId: currentUser.uid, 
+                nickname, 
+                pin 
+            }));
+            console.log('✅ localStorage updated after Firebase success');
+            
+            console.log('✅ saveUser completed successfully with Firebase UID as primary');
+            return { userId: currentUser.uid, nickname };
+            
+        } catch (error) {
+            console.error('❌ Error in Firebase user creation:', error);
+            console.error('Error details:', {
+                message: error.message,
+                code: error.code,
+                name: error.name
+            });
+            
+            // Handle network errors with temporary fallback
+            if (error.code === 'auth/network-request-failed' || error.message?.includes('network')) {
+                console.warn('🌐 Network error - creating temporary offline user');
                 
-                // Save user to Realtime Database
-                console.log('Importing database functions...');
-                const { ref, set } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
-                
-                console.log('Creating user reference...');
-                const userRef = ref(database, `users/${currentUser.uid}`);
-                
-                const userData = {
-                    uid: currentUser.uid,
-                    nickname: nickname,
-                    pin: pin,
-                    createdAt: Date.now(),
-                    lastSeen: Date.now()
-                };
-                
-                console.log('Saving user data to Firebase:', userData);
-                await set(userRef, userData);
-                console.log('✅ User saved to Firebase successfully!');
-                
-                // Update localStorage with Firebase UID
+                const tempUserId = `temp_${userId}_${Date.now()}`;
                 localStorage.setItem(STORAGE_KEY, JSON.stringify({ 
-                    userId: currentUser.uid, 
+                    userId: tempUserId, 
                     nickname, 
-                    pin 
+                    pin,
+                    isTemporary: true,
+                    createdAt: Date.now()
                 }));
                 
-                console.log('✅ saveUser completed successfully');
-                return { userId: currentUser.uid, nickname };
-            } catch (error) {
-                console.error('❌ Error saving user to Firebase:', error);
-                console.error('Error details:', {
-                    message: error.message,
-                    code: error.code,
-                    stack: error.stack
-                });
-                showToast('Account created locally (offline mode)');
-                // Don't throw - return the localStorage version
+                showToast('Account created offline - will sync when connection is restored');
+                return { userId: tempUserId, nickname, isTemporary: true };
             }
-        } else {
-            console.log('Firebase not ready, using localStorage only');
+            
+            // For other Firebase errors, don't create fallback
+            throw new Error(`Failed to create user account: ${error.message}. Please check your internet connection and try again.`);
         }
-        
-        console.log('Returning fallback user data');
-        return { userId, nickname };
     };
 
     const getUser = () => {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return null;
+        console.log('🔍 getUser called, localStorage raw data:', raw);
+        if (!raw) {
+            console.log('❌ No user data found in localStorage');
+            return null;
+        }
         try {
-            return JSON.parse(raw);
+            const parsed = JSON.parse(raw);
+            console.log('✅ User data parsed successfully:', {
+                userId: parsed.userId,
+                nickname: parsed.nickname,
+                hasPin: !!parsed.pin
+            });
+            return parsed;
         } catch (e) {
-            console.error('Failed to parse user data', e);
+            console.error('❌ Failed to parse user data', e);
             return null;
         }
     };
@@ -308,11 +319,77 @@ const app = (() => {
         currentUser = null;
     };
 
+    const getCurrentUser = () => {
+        return currentUser; // Firebase auth user
+    };
+    
+    // Function to sync temporary users with Firebase when connection is restored
+    const syncTemporaryUser = async () => {
+        const user = getUser();
+        if (!user || !user.isTemporary) return false;
+        
+        console.log('🔄 Attempting to sync temporary user with Firebase...');
+        
+        try {
+            if (!isFirebaseReady || !database) {
+                console.log('⚠️ Firebase not ready for sync, will retry later');
+                return false;
+            }
+            
+            // Try to authenticate with Firebase
+            if (!currentUser) {
+                const { signInAnonymously } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js');
+                const result = await signInAnonymously(auth);
+                currentUser = result.user;
+                console.log('✅ Authenticated for sync with UID:', currentUser.uid);
+            }
+            
+            // Save user to Firebase
+            const { ref, set } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
+            const userRef = ref(database, `users/${currentUser.uid}`);
+            
+            const userData = {
+                uid: currentUser.uid,
+                nickname: user.nickname,
+                pin: user.pin,
+                createdAt: user.createdAt || Date.now(),
+                lastSeen: Date.now(),
+                syncedAt: Date.now()
+            };
+            
+            await set(userRef, userData);
+            console.log('✅ Temporary user synced to Firebase successfully!');
+            
+            // Update localStorage to remove temporary flag
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ 
+                userId: currentUser.uid, 
+                nickname: user.nickname, 
+                pin: user.pin 
+            }));
+            
+            showToast('Account synced with cloud!');
+            return true;
+        } catch (error) {
+            console.warn('⚠️ Could not sync temporary user:', error.message);
+            return false;
+        }
+    };
+    
     const requireUser = () => {
+        // Check localStorage for user data first
         const user = getUser();
         if (!user) {
+            console.error('❌ No user data found in localStorage - redirecting to login');
             window.location.href = 'index.html';
+            return null;
         }
+        
+        console.log('✅ User found in localStorage:', {
+            userId: user.userId,
+            nickname: user.nickname,
+            isTemporary: !!user.isTemporary
+        });
+        
         return user;
     };
 
@@ -642,6 +719,7 @@ const app = (() => {
         generateUniqueRoomCode,
         authenticateUser,
         saveUser,
+        syncTemporaryUser,
         getUser,
         clearUser,
         requireUser,

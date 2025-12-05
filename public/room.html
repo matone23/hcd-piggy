@@ -181,6 +181,12 @@
             // Load room participants from cached data for initial UI
             if (roomData && roomData.participants) {
                 participants = Object.values(roomData.participants);
+                console.log('📋 Initial participants loaded from cache:', participants.map(p => ({
+                    userId: p.userId, 
+                    nickname: p.nickname
+                })));
+            } else {
+                console.warn('⚠️ No participants found in cached room data');
             }
             
             // Variables for calculations
@@ -199,29 +205,69 @@
                     if (freshRoomData && freshRoomData.participants) {
                         const freshParticipants = Object.values(freshRoomData.participants);
                         const cachedUser = app.getUser();
-                        const userId = app?.getCurrentUser()?.uid || cachedUser?.userId;
+                        const firebaseUserId = app?.getCurrentUser()?.uid;
+                        const cachedUserId = cachedUser?.userId;
+                        const nickname = cachedUser?.nickname;
                         
-                        const userParticipant = freshParticipants.find(p => 
-                            p.userId === userId || p.nickname === cachedUser?.nickname
-                        );
+                        console.log('🔍 User identification for onboarding check:', {
+                            firebaseUserId,
+                            cachedUserId,
+                            nickname,
+                            allParticipants: freshParticipants.map(p => ({
+                                userId: p.userId,
+                                nickname: p.nickname,
+                                hasGoals: !!p.goals,
+                                hasColor: !!p.color,
+                                onboardingComplete: p.onboardingComplete
+                            }))
+                        });
                         
-                        console.log('🔍 Onboarding check for user:', {
-                            userId,
-                            nickname: cachedUser?.nickname,
+                        // Try multiple matching strategies
+                        let userParticipant = null;
+                        
+                        // Strategy 1: Match by Firebase UID
+                        if (firebaseUserId) {
+                            userParticipant = freshParticipants.find(p => p.userId === firebaseUserId);
+                            if (userParticipant) {
+                                console.log('✅ Found user by Firebase UID:', userParticipant.nickname);
+                            }
+                        }
+                        
+                        // Strategy 2: Match by cached user ID
+                        if (!userParticipant && cachedUserId) {
+                            userParticipant = freshParticipants.find(p => p.userId === cachedUserId);
+                            if (userParticipant) {
+                                console.log('✅ Found user by cached user ID:', userParticipant.nickname);
+                            }
+                        }
+                        
+                        // Strategy 3: Match by nickname as fallback
+                        if (!userParticipant && nickname) {
+                            userParticipant = freshParticipants.find(p => p.nickname === nickname);
+                            if (userParticipant) {
+                                console.log('✅ Found user by nickname:', userParticipant.nickname);
+                            }
+                        }
+                        
+                        console.log('🔍 Detailed onboarding check for user:', {
+                            userFound: !!userParticipant,
                             userParticipant: userParticipant ? {
                                 userId: userParticipant.userId,
                                 nickname: userParticipant.nickname,
                                 hasGoals: !!userParticipant.goals,
+                                goalsLength: userParticipant.goals ? userParticipant.goals.length : 0,
                                 hasColor: !!userParticipant.color,
-                                onboardingComplete: userParticipant.onboardingComplete
-                            } : null
+                                colorValue: userParticipant.color,
+                                onboardingComplete: userParticipant.onboardingComplete,
+                                allFields: Object.keys(userParticipant || {})
+                            } : 'USER NOT FOUND'
                         });
                         
                         hasCompletedOnboarding = userParticipant && 
                                                userParticipant.goals && 
                                                userParticipant.goals.length > 0 && 
                                                userParticipant.color && 
-                                               userParticipant.onboardingComplete;
+                                               userParticipant.onboardingComplete === true;
                                                
                         // Update local data with fresh data
                         if (freshRoomData) {
@@ -231,20 +277,43 @@
                     }
                 }
                 
-                // Fallback to cached data check if Firebase fails
+                // Fallback to cached data check if Firebase fails or user not found
                 if (!hasCompletedOnboarding) {
+                    console.log('🔄 Trying fallback onboarding check with cached data...');
                     const cachedUser = app.getUser();
-                    const userId = app?.getCurrentUser()?.uid || cachedUser?.userId;
+                    const firebaseUserId = app?.getCurrentUser()?.uid;
+                    const cachedUserId = cachedUser?.userId;
+                    const nickname = cachedUser?.nickname;
                     
-                    const userParticipantFromCache = participants.find(p => 
-                        p.userId === userId || p.nickname === cachedUser?.nickname
-                    );
+                    let userParticipantFromCache = null;
+                    
+                    // Try multiple matching strategies for cached data too
+                    if (firebaseUserId) {
+                        userParticipantFromCache = participants.find(p => p.userId === firebaseUserId);
+                    }
+                    if (!userParticipantFromCache && cachedUserId) {
+                        userParticipantFromCache = participants.find(p => p.userId === cachedUserId);
+                    }
+                    if (!userParticipantFromCache && nickname) {
+                        userParticipantFromCache = participants.find(p => p.nickname === nickname);
+                    }
+                    
+                    console.log('🔄 Cached data onboarding check:', {
+                        userFound: !!userParticipantFromCache,
+                        userParticipant: userParticipantFromCache ? {
+                            userId: userParticipantFromCache.userId,
+                            nickname: userParticipantFromCache.nickname,
+                            hasGoals: !!userParticipantFromCache.goals,
+                            hasColor: !!userParticipantFromCache.color,
+                            onboardingComplete: userParticipantFromCache.onboardingComplete
+                        } : 'USER NOT FOUND IN CACHE'
+                    });
                     
                     hasCompletedOnboarding = userParticipantFromCache && 
                                            userParticipantFromCache.goals && 
                                            userParticipantFromCache.goals.length > 0 && 
                                            userParticipantFromCache.color && 
-                                           userParticipantFromCache.onboardingComplete;
+                                           userParticipantFromCache.onboardingComplete === true;
                 }
                 
             } catch (error) {
@@ -280,10 +349,22 @@
                         roomData = { ...roomData, ...firebaseRoom };
                         window.roomData = roomData; // Ensure window.roomData is also updated
                         
-                        // Update participants from Firebase
+                        // Update participants from Firebase with better logging
                         if (firebaseRoom.participants) {
-                            participants = Object.values(firebaseRoom.participants);
-                            console.log('👥 Updated participants:', participants.map(p => ({nickname: p.nickname, points: 'calculated'})));
+                            const newParticipants = Object.values(firebaseRoom.participants);
+                            console.log('👥 Updating participants from Firebase:', {
+                                oldCount: participants.length,
+                                newCount: newParticipants.length,
+                                oldParticipants: participants.map(p => ({ userId: p.userId, nickname: p.nickname })),
+                                newParticipants: newParticipants.map(p => ({ userId: p.userId, nickname: p.nickname }))
+                            });
+                            
+                            participants = newParticipants;
+                            
+                            // Ensure UI reflects the updated participant count
+                            console.log('✅ Participants updated, refreshing UI components');
+                        } else {
+                            console.warn('⚠️ No participants found in Firebase room data');
                         }
                         
                         // Update UI with fresh data
@@ -340,11 +421,18 @@
                                 JSON.stringify(participants.map(p => ({id: p.userId, nickname: p.nickname})));
                             
                             if (participantsChanged) {
-                                console.log('👥 Participants changed, updating UI');
+                                console.log('👥 Participants changed via real-time update:', {
+                                    oldCount: participants.length,
+                                    newCount: newParticipants.length,
+                                    oldParticipants: participants.map(p => p.nickname),
+                                    newParticipants: newParticipants.map(p => p.nickname)
+                                });
+                                
                                 participants = newParticipants;
                                 updateParticipantCount();
                                 updateDayCounter();
                                 refreshRanking();
+                                updateFeed(); // Also update feed when participants change
                             }
                         }
                         
@@ -424,6 +512,36 @@
                     feedData.push(...newFeedData);
                     renderFeed();
                 }
+            };
+            
+            // Helper function to check if user needs onboarding setup
+            const checkUserSetup = () => {
+                const currentUserId = app?.getCurrentUser()?.uid || user?.userId;
+                
+                // Check current room participants for this user
+                let userParticipant = null;
+                if (roomData && roomData.participants) {
+                    const allParticipants = Object.values(roomData.participants);
+                    userParticipant = allParticipants.find(p => 
+                        p.userId === currentUserId || p.nickname === user.nickname
+                    );
+                }
+                
+                const needsSetup = !userParticipant || !userParticipant.goals || 
+                                 userParticipant.goals.length === 0 || !userParticipant.color;
+                
+                console.log('🔍 User setup check:', {
+                    currentUserId,
+                    userNickname: user.nickname,
+                    userParticipant: userParticipant ? {
+                        hasGoals: !!userParticipant.goals,
+                        goalsLength: userParticipant.goals ? userParticipant.goals.length : 0,
+                        hasColor: !!userParticipant.color
+                    } : 'NOT FOUND',
+                    needsSetup
+                });
+                
+                return { needsSetup, userParticipant };
             };
             
             // Day Counter functionality
@@ -676,8 +794,47 @@
         }
 
             const triggerUpload = async (payload) => {
-                // Check if there are other players in the room
-                const otherPlayers = participants.filter(p => p.nickname !== user.nickname);
+                // Check if user needs to complete setup first
+                const { needsSetup } = checkUserSetup();
+                if (needsSetup) {
+                    app.showToast('Please complete your setup first by filling out your goals and choosing a color.');
+                    // Show onboarding with a 1-second delay to let user read the message
+                    setTimeout(() => {
+                        window.location.href = `onboarding.html?type=${mode}`;
+                    }, 1000);
+                    return;
+                }
+                
+                // Get fresh participant count from Firebase to ensure accuracy
+                let currentParticipants = participants;
+                if (app.isFirebaseReady() && roomData.id) {
+                    try {
+                        const freshRoom = await app.getRoom(roomData.id);
+                        if (freshRoom && freshRoom.participants) {
+                            currentParticipants = Object.values(freshRoom.participants);
+                            console.log('🔄 Fresh participant check for upload:', {
+                                participantCount: currentParticipants.length,
+                                participants: currentParticipants.map(p => p.nickname),
+                                currentUser: user.nickname
+                            });
+                        }
+                    } catch (error) {
+                        console.warn('Could not get fresh participant data for upload check:', error);
+                    }
+                }
+                
+                // Check if there are other players in the room (use Firebase UID for comparison)
+                const currentUserId = app.getCurrentUser()?.uid || user.userId;
+                const otherPlayers = currentParticipants.filter(p => p.userId !== currentUserId);
+                
+                console.log('📊 Upload participant check:', {
+                    totalParticipants: currentParticipants.length,
+                    otherPlayers: otherPlayers.length,
+                    currentUserId,
+                    otherPlayerIds: otherPlayers.map(p => p.userId),
+                    allParticipants: currentParticipants.map(p => ({ userId: p.userId, nickname: p.nickname }))
+                });
+                
                 if (otherPlayers.length === 0) {
                     app.showToast('You need at least one other player in the room to start uploading proof!');
                     return;
@@ -1008,18 +1165,33 @@
             const feedData = generateFeedData();
             
             // Handle approval/rejection of submissions
-            const handleApproval = async (submission, isApproval) => {
+            const handleApproval = async (submission, isApproval, submissionId) => {
                 try {
                     const currentUserId = app.getCurrentUser()?.uid || user.userId;
-                    const submissionId = Object.keys(roomData.submissions || {}).find(key => 
-                        roomData.submissions[key] === submission
-                    );
                     
-                    if (!submissionId) {
-                        console.error('Submission ID not found');
+                    // Use provided submissionId or try to find it as fallback
+                    let actualSubmissionId = submissionId;
+                    if (!actualSubmissionId) {
+                        console.warn('No submissionId provided, attempting to find it...');
+                        actualSubmissionId = Object.keys(roomData.submissions || {}).find(key => {
+                            const stored = roomData.submissions[key];
+                            return stored && stored.userId === submission.userId && 
+                                   stored.submittedAt === submission.submittedAt;
+                        });
+                    }
+                    
+                    if (!actualSubmissionId) {
+                        console.error('Submission ID not found:', {
+                            submissionUserId: submission.userId,
+                            submissionTime: submission.submittedAt,
+                            availableSubmissions: Object.keys(roomData.submissions || {}),
+                            providedId: submissionId
+                        });
                         app.showToast('Error: Could not find submission');
                         return;
                     }
+                    
+                    console.log('Processing approval for submission:', actualSubmissionId);
                     
                     // Don't allow voting on own submissions
                     if (submission.userId === currentUserId) {
@@ -1069,9 +1241,9 @@
                     
                     // Prepare Firebase update data
                     const updateData = {
-                        [`submissions/${submissionId}/approvals`]: newApprovals,
-                        [`submissions/${submissionId}/rejections`]: newRejections,
-                        [`submissions/${submissionId}/status`]: newStatus
+                        [`submissions/${actualSubmissionId}/approvals`]: newApprovals,
+                        [`submissions/${actualSubmissionId}/rejections`]: newRejections,
+                        [`submissions/${actualSubmissionId}/status`]: newStatus
                     };
                     
                     // If approved, also update the participant's score
@@ -1252,14 +1424,14 @@
                     approveBtn.className = 'btn btn-primary btn-small';
                     approveBtn.textContent = `👍 Approve (${cardData.approvals || 0})`;
                     approveBtn.addEventListener('click', async () => {
-                        await handleApproval(cardData.submissionData, true);
+                        await handleApproval(cardData.submissionData, true, cardData.submissionId);
                     });
                     
                     const rejectBtn = document.createElement('button');
                     rejectBtn.className = 'btn btn-outline btn-small';
                     rejectBtn.textContent = `👎 Reject (${cardData.rejections || 0})`;
                     rejectBtn.addEventListener('click', async () => {
-                        await handleApproval(cardData.submissionData, false);
+                        await handleApproval(cardData.submissionData, false, cardData.submissionId);
                     });
                     
                     buttonContainer.appendChild(approveBtn);
