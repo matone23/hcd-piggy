@@ -20,8 +20,6 @@
     </header>
 
     <main class="page" style="padding-top:16px;">
-        <div id="statusCard" class="card stack" style="margin-bottom:12px;"></div>
-
         <!-- Room Code Section -->
         <div class="card" style="margin-bottom: 12px; padding: 12px; background: #f8f9fa; border: 1px solid #dee2e6;">
             <div style="text-align: center;">
@@ -173,6 +171,10 @@
                 participants = Object.values(roomData.participants);
             }
             
+            // Variables for calculations
+            const today = new Date().toDateString();
+            const currentUserId = app?.getCurrentUser()?.uid || user?.userId;
+            
             // Check onboarding status - load fresh data from Firebase to avoid loop
             let hasCompletedOnboarding = false;
             
@@ -274,7 +276,6 @@
                         
                         // Update UI with fresh data
                         updateParticipantCount();
-                        updateFocusBox();
                         refreshRanking();
                         updateFeed();
                         
@@ -329,7 +330,6 @@
                                 console.log('👥 Participants changed, updating UI');
                                 participants = newParticipants;
                                 updateParticipantCount();
-                                updateFocusBox();
                                 refreshRanking();
                             }
                         }
@@ -339,9 +339,8 @@
                             const newSubmissionData = JSON.stringify(updatedRoomData.submissions);
                             const oldSubmissionData = JSON.stringify(roomData.submissions || {});
                             if (newSubmissionData !== oldSubmissionData) {
-                                console.log('📝 Submissions changed, updating feed and focus');
+                                console.log('📝 Submissions changed, updating feed and rankings');
                                 updateFeed();
-                                updateFocusBox();
                                 refreshRanking(); // Rankings might change due to approved submissions
                             }
                         }
@@ -354,7 +353,6 @@
             const header = document.getElementById('roomHeader');
             const roomTitle = document.getElementById('roomTitle');
             const leaderBanner = document.getElementById('leaderBanner');
-            const statusCard = document.getElementById('statusCard');
             const missionTab = document.getElementById('missionTab');
             const feedTab = document.getElementById('feedTab');
             const rankTab = document.getElementById('rankTab');
@@ -414,135 +412,11 @@
                 }
             };
 
-            // Update focus box with current room status
-            let lastFocusBoxUpdate = 0;
-            const updateFocusBox = () => {
-                // Prevent too frequent updates (max once per 100ms)
-                const now = Date.now();
-                if (now - lastFocusBoxUpdate < 100) {
-                    console.log('⚠️ Skipping focus box update - too frequent');
-                    return;
-                }
-                lastFocusBoxUpdate = now;
-                
-                // Use local roomData if window.roomData is not available
-                const currentRoomData = window.roomData || roomData;
-                
-                if (!currentRoomData || !currentRoomData.participants) {
-                    console.log('⚠️ Cannot update focus box - no room data available');
-                    console.log('Available data:', { windowRoomData: !!window.roomData, localRoomData: !!roomData });
-                    return;
-                }
-                
-                const participants = Object.values(currentRoomData.participants || {});
-                const submissions = Object.values(currentRoomData.submissions || {});
-                const currentUserId = app?.getCurrentUser()?.uid || user?.userId;
-                
-                if (!participants.length) {
-                    console.log('⚠️ No participants found, skipping focus box update');
-                    return;
-                }
-                
-                console.log('📊 Focus box data:', {
-                    participants: participants.length,
-                    submissions: submissions.length,
-                    currentUserId
-                });
-                
-                // Calculate points for each participant
-                const participantStats = participants.map(p => {
-                    const userSubmissions = submissions.filter(s => 
-                        s.userId === p.userId && s.status === 'approved'
-                    );
-                    // Use actual task points, not hardcoded 10
-                    const points = userSubmissions.reduce((total, sub) => {
-                        const taskPoints = sub.task?.points || 10;
-                        console.log(`🔥 Task points for ${p.nickname}:`, {
-                            submissionId: sub.id || 'no-id',
-                            taskData: sub.task,
-                            taskPoints,
-                            hasTask: !!sub.task
-                        });
-                        return total + taskPoints; // fallback to 10 if no task points
-                    }, 0);
-                    
-                    console.log(`🔍 Focus box calculation for ${p.nickname}:`, {
-                        userId: p.userId,
-                        totalSubmissions: submissions.filter(s => s.userId === p.userId).length,
-                        approvedSubmissions: userSubmissions.length,
-                        calculatedPoints: points,
-                        submissionPoints: userSubmissions.map(s => ({ 
-                            taskPoints: s.task?.points || 10, 
-                            taskLabel: s.task?.label || 'Unknown',
-                            fullTask: s.task 
-                        })),
-                        submissionIds: userSubmissions.map(s => s.id || 'no-id')
-                    });
-                    
-                    return { ...p, points, submissionCount: userSubmissions.length };
-                });
-                
-                // Sort by points to find leader
-                participantStats.sort((a, b) => b.points - a.points);
-                const leader = participantStats[0];
-                const currentUser = participantStats.find(p => p.userId === currentUserId);
-                const iAmLeader = currentUser && currentUser.userId === leader?.userId;
-                
-                // Calculate today's points for current user
-                const today = new Date().toDateString();
-                const todaySubmissions = submissions.filter(s => 
-                    s.userId === currentUserId && 
-                    s.status === 'approved' &&
-                    new Date(s.submittedAt).toDateString() === today
-                );
-                // Use actual task points for today's total
-                const todayPoints = todaySubmissions.reduce((total, sub) => {
-                    return total + (sub.task?.points || 10);
-                }, 0);
-                
-                // Calculate day progress
-                const startDate = new Date(currentRoomData.createdAt || Date.now());
-                const daysSinceStart = Math.floor((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                const duration = currentRoomData.duration || 30;
-                
-                // Update status card
-                const statusCard = document.getElementById('statusCard');
-                if (statusCard) {
-                    const gap = leader && !iAmLeader ? leader.points - (currentUser?.points || 0) : 0;
-                    
-                    statusCard.innerHTML = `
-                        <div style="display: flex; align-items: center; gap: 12px;">
-                            <div style="font-size: 24px;">${iAmLeader ? '🏆' : '🏃‍♂️'}</div>
-                            <div>
-                                <div style="font-weight: 600; color: #495057;">
-                                    ${participants.length === 1 ? 'Waiting for others to join' : 
-                                      iAmLeader ? 'You\'re in the lead!' : 
-                                      `${gap} pts behind ${leader?.nickname || 'leader'}`}
-                                </div>
-                                <div class="muted" style="font-size: 14px;">Day ${daysSinceStart}/${duration} · Today: ${todayPoints} pts earned</div>
-                            </div>
-                        </div>
-                    `;
-                    
-                    console.log('✅ Focus box updated successfully:', {
-                        participants: participants.length,
-                        leader: leader?.nickname,
-                        iAmLeader,
-                        todayPoints,
-                        daysSinceStart,
-                        gap
-                    });
-                } else {
-                    console.warn('⚠️ statusCard element not found');
-                }
-            };
+            // Get DOM elements
             const fileCapture = document.getElementById('fileCapture');
 
-            console.log('Elements found:', { header, roomTitle, leaderBanner, statusCard });
-
-            if (roomTitle) {
-                roomTitle.textContent = roomName;
-            }
+            console.log('Elements found:', { header, roomTitle, leaderBanner });
+            
             // Initialize UI immediately with cached data
             if (roomTitle) roomTitle.textContent = roomName;
             
@@ -679,8 +553,6 @@
             }
             
             // Check user's submission status for today
-            const today = new Date().toDateString();
-            const currentUserId = app.getCurrentUser()?.uid || user.userId;
             const todaySubmissions = roomData.submissions ? 
                 Object.values(roomData.submissions).filter(sub => 
                     sub.userId === currentUserId && 
@@ -694,8 +566,8 @@
                 todaySubmissions[todaySubmissions.length - 1] : null;
             
             // Calculate leader status and current user points
-            const leader = getLeader();
-            const iAmLeader = leader && leader.nickname === user.nickname;
+            const leaderData = getLeader();
+            const iAmLeader = leaderData && leaderData.nickname === user.nickname;
             
             // Calculate current user's points the same way as leader calculation
             const currentUserSubmissions = Object.values(roomData.submissions || {}).filter(s => 
@@ -710,7 +582,7 @@
                 pending: latestSubmission?.status === 'pending',
                 rejected: latestSubmission?.status === 'rejected',
                 todayPoints: latestSubmission?.status === 'approved' ? (latestSubmission.task?.points || 0) : 0,
-                gap: iAmLeader ? 0 : Math.max(0, (leader?.calculatedPoints || 0) - currentUserPoints),
+                gap: iAmLeader ? 0 : Math.max(0, (leaderData?.calculatedPoints || 0) - currentUserPoints),
             };
 
             const oneDayState = {
@@ -738,16 +610,16 @@
                 }
                 
                 // Check if user has already uploaded today - use consistent Firebase UID
-                const today = new Date().toDateString();
-                const currentUserId = app.getCurrentUser()?.uid || user.userId;
-                const todaySubmissions = roomData.submissions ? 
+                const todayDate = new Date().toDateString();
+                const userId = app.getCurrentUser()?.uid || user.userId;
+                const todayUserSubmissions = roomData.submissions ? 
                     Object.values(roomData.submissions).filter(sub => 
-                        sub.userId === currentUserId && 
-                        new Date(sub.submittedAt).toDateString() === today
+                        sub.userId === userId && 
+                        new Date(sub.submittedAt).toDateString() === todayDate
                     ) : [];
                 
-                if (todaySubmissions.length > 0) {
-                    const latestSubmission = todaySubmissions[todaySubmissions.length - 1];
+                if (todayUserSubmissions.length > 0) {
+                    const latestSubmission = todayUserSubmissions[todayUserSubmissions.length - 1];
                     if (latestSubmission.status === 'pending') {
                         app.showToast('You already have a submission pending approval today!');
                         return;
@@ -787,20 +659,6 @@
                 duration,
                 participantsCount: participants.length
             });
-            
-            statusCard.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="font-size: 24px;">${iAmLeader ? '🏆' : '🏃‍♂️'}</div>
-                    <div>
-                        <div style="font-weight: 600; color: #495057;">
-                            ${participants.length === 1 ? 'Waiting for others to join' : 
-                              iAmLeader ? 'You\'re in the lead!' : 
-                              `${routineState.gap} pts behind ${leader?.nickname || 'leader'}`}
-                        </div>
-                        <div class="muted" style="font-size: 14px;">Day ${daysSinceStart}/${duration} · Today: ${routineState.todayPoints} pts earned</div>
-                    </div>
-                </div>
-            `;
 
             if (routineState.completed) {
                 const doneCard = document.createElement('div');
@@ -831,23 +689,6 @@
 
             const currentUser = participants.find(p => p.nickname === user.nickname);
             
-            statusCard.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="font-size: 24px;">${iAmLeader ? '🏆' : '🏃‍♂️'}</div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: 600; color: #495057; margin-bottom: 4px;">
-                            ${participants.length === 1 ? 'Waiting for others to join' : 
-                              iAmLeader ? 'You\'re in the lead!' : 
-                              leader ? `Behind ${leader.nickname}` : 'Keep going!'}
-                        </div>
-                        <div class="muted" style="font-size: 14px; margin-bottom: 6px;">Progress: ${pct}% complete (${formatTime(remaining)} left)</div>
-                        <div class="progress" style="height: 6px; background: #e9ecef; border-radius: 3px; overflow: hidden;">
-                            <div class="progress-bar" style="width:${pct}%; height: 100%; background: linear-gradient(90deg, #00E054, #00b045); transition: width 0.3s ease;"></div>
-                        </div>
-                    </div>
-                </div>
-            `;
-
             const list = document.createElement('div');
             list.className = 'list';
 
@@ -1387,8 +1228,8 @@
                     return;
                 }
                 
-                if (!roomData || !roomData.submissions) {
-                    rankTab.innerHTML = '<div class="muted" style="text-align: center; padding: 20px;">Loading submission data...</div>';
+                if (!roomData) {
+                    rankTab.innerHTML = '<div class="muted" style="text-align: center; padding: 20px;">Loading room data...</div>';
                     return;
                 }
                 
@@ -1400,7 +1241,8 @@
                         score: p.score || 0
                     })),
                     currentUser: user.nickname,
-                    firebaseUser: app.getCurrentUser()?.uid
+                    firebaseUser: app.getCurrentUser()?.uid,
+                    hasSubmissions: !!(roomData.submissions && Object.keys(roomData.submissions).length > 0)
                 });
 
             const streak = (() => {
@@ -1558,11 +1400,8 @@
                 } else {
                     renderOneDayMission();
                 }
-                renderFeed();
-                renderRanking();
-                updateFocusBox();
-                
-                console.log('🚀 Room initialized with Firebase data');
+                        renderFeed();
+                        renderRanking();                console.log('🚀 Room initialized with Firebase data');
             };
             
             // Start initialization
