@@ -8,14 +8,35 @@
 </head>
 <body class="app-shell">
     <main class="page center">
-        <div class="card stack">
-            <div class="muted">Result</div>
-            <h1 id="winnerTitle">Winner</h1>
-            <p id="winnerDesc">Congrats to the champion!</p>
-            <button id="rematchBtn" class="btn btn-primary">Rematch</button>
-            <button class="btn btn-outline" onclick="window.location.href='lobby.html'">Back to Lobby</button>
+        <!-- Loading state - shown initially -->
+        <div id="loadingState" class="card stack">
+            <div class="muted">Loading results...</div>
+            <div style="text-align: center; padding: 20px;">
+                <div style="font-size: 24px; animation: spin 1s linear infinite;">⏳</div>
+            </div>
+        </div>
+
+        <!-- Content state - shown after loading -->
+        <div id="contentState" style="display: none;">
+            <div class="card stack">
+                <h1 id="winnerTitle"></h1>
+                <p id="winnerDesc"></p>
+                <button id="rematchBtn" class="btn btn-primary">Rematch</button>
+                <button class="btn btn-outline" onclick="window.location.href='lobby.html'">Back to Lobby</button>
+            </div>
+
+            <div id="piggyBankSection" class="card stack" style="margin-top: 20px; text-align: center; display: none;">
+                <div id="userColorDisplay" style="width: 80px; height: 80px; border-radius: 50%; margin: 0 auto; border: 3px solid var(--border); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);"></div>
+                <p id="piggyMessage" style="margin-top: 16px; font-size: 16px; line-height: 1.5;"></p>
+            </div>
         </div>
     </main>
+
+    <style>
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
 
     <div id="toast" role="status" aria-live="polite"></div>
     
@@ -69,9 +90,14 @@
             const room = JSON.parse(localStorage.getItem('piggy-habit-room') || '{}');
             console.log('Result room data:', room);
             
+            const loadingState = document.getElementById('loadingState');
+            const contentState = document.getElementById('contentState');
             const winnerTitle = document.getElementById('winnerTitle');
             const winnerDesc = document.getElementById('winnerDesc');
             const rematchBtn = document.getElementById('rematchBtn');
+            const piggyBankSection = document.getElementById('piggyBankSection');
+            const userColorDisplay = document.getElementById('userColorDisplay');
+            const piggyMessage = document.getElementById('piggyMessage');
 
             console.log('Elements found:', { winnerTitle, winnerDesc, rematchBtn });
 
@@ -87,6 +113,12 @@
                     
                     if (firebaseRoom) {
                         console.log('📊 Firebase room data:', firebaseRoom);
+                        console.log('📊 Firebase room data details:', {
+                            hasParticipants: !!firebaseRoom.participants,
+                            hasSubmissions: !!firebaseRoom.submissions,
+                            participantKeys: firebaseRoom.participants ? Object.keys(firebaseRoom.participants) : [],
+                            submissionKeys: firebaseRoom.submissions ? Object.keys(firebaseRoom.submissions) : []
+                        });
                         
                         // Check if competition was manually ended with stored winner
                         if (firebaseRoom.manuallyEnded && firebaseRoom.winner) {
@@ -99,8 +131,9 @@
                         }
                         
                         console.log('🎯 Final winner data:', winnerData);
-                    } else {
-                        console.warn('❌ No Firebase room data found');
+                        
+                        // Store competitionData for later use (for piggy bank color retrieval)
+                        competitionData = firebaseRoom;
                     }
                 } catch (error) {
                     console.warn('❌ Failed to load room from Firebase:', error);
@@ -109,13 +142,13 @@
             
             // Function to calculate winner from room data
             function calculateWinner(roomData) {
-                if (!roomData || !roomData.participants || !roomData.submissions) {
+                if (!roomData || !roomData.participants) {
                     console.warn('❌ Missing room data for winner calculation');
                     return null;
                 }
                 
                 const participants = Object.values(roomData.participants);
-                const submissions = Object.values(roomData.submissions);
+                const submissions = roomData.submissions ? Object.values(roomData.submissions) : [];
                 
                 console.log('📈 Calculating winner from:', {
                     participantCount: participants.length,
@@ -157,13 +190,24 @@
                 
                 const winner = participantPoints[0];
                 const hasCompetition = winner && winner.points > 0 && participantPoints.some(p => p.points < winner.points);
+                const isSingleParticipant = participantPoints.length === 1;
                 
-                if (hasCompetition) {
+                console.log('🔍 Winner determination check:', {
+                    winner: winner ? { nickname: winner.nickname, points: winner.points } : null,
+                    hasCompetition,
+                    isSingleParticipant,
+                    participantCount: participantPoints.length,
+                    allParticipantPoints: participantPoints.map(p => ({ nickname: p.nickname, points: p.points }))
+                });
+                
+                // Return winner if there's competition, or if they're the only participant
+                if (hasCompetition || isSingleParticipant) {
                     console.log('🎉 Winner determined:', {
                         nickname: winner.nickname,
                         points: winner.points,
                         color: winner.color,
-                        userId: winner.userId
+                        userId: winner.userId,
+                        reason: isSingleParticipant ? 'sole participant' : 'competition winner'
                     });
                     return {
                         nickname: winner.nickname,
@@ -177,26 +221,9 @@
                 }
             }
             
-            // Display winner information
+            // Store winner data for piggy bank display, but don't reveal it in the title/description
             if (winnerData && winnerData.nickname) {
-                console.log('🎨 Displaying winner with color:', winnerData.color);
-                
-                if (winnerTitle) {
-                    winnerTitle.textContent = `${winnerData.nickname} wins!`;
-                    // Add winner's color as background accent
-                    if (winnerData.color) {
-                        winnerTitle.style.background = `linear-gradient(135deg, ${winnerData.color}, ${winnerData.color}cc)`;
-                        winnerTitle.style.color = '#fff';
-                        winnerTitle.style.padding = '12px 20px';
-                        winnerTitle.style.borderRadius = '8px';
-                        winnerTitle.style.textShadow = '0 1px 2px rgba(0,0,0,0.3)';
-                    }
-                }
-                
-                if (winnerDesc) {
-                    const pointsText = winnerData.points ? ` with ${winnerData.points} points` : '';
-                    winnerDesc.textContent = `🎉 Congratulations${pointsText}! Set up a new challenge and keep the streak.`;
-                }
+                console.log('🎨 Winner determined (hidden from display):', winnerData.nickname);
                 
                 // Store winner color for IoT integration
                 if (winnerData.color) {
@@ -214,18 +241,63 @@
                     
                     console.log('🔌 Winner data stored for IoT piggy bank integration');
                 }
-                
-            } else {
-                // Fallback display
-                console.log('🤝 No winner determined, showing tie/default message');
-                
-                if (winnerTitle) {
-                    winnerTitle.textContent = competitionData?.manuallyEnded ? 'Competition Complete!' : 'Great effort everyone!';
-                }
-                if (winnerDesc) {
-                    winnerDesc.textContent = 'Everyone did their best! Set up a new challenge to continue.';
-                }
             }
+            
+            // Display same message for everyone (don't reveal winner)
+            if (winnerTitle) {
+                winnerTitle.textContent = 'Competition Complete!';
+            }
+            
+            if (winnerDesc) {
+                winnerDesc.textContent = '🎉 Congratulations on completing the challenge! Set up a new competition to continue.';
+            }
+
+            // Display user's color with piggy bank message - only if user won
+            const userIsWinner = winnerData && winnerData.userId === user.userId;
+            
+            console.log('🐷 Piggy bank section check:', {
+                hasWinnerData: !!winnerData,
+                winnerDataDetails: winnerData ? { nickname: winnerData.nickname, userId: winnerData.userId } : null,
+                currentUser: { userId: user.userId, nickname: user.nickname },
+                userIsWinner,
+                hasPiggyBankSection: !!piggyBankSection,
+                hasUserColorDisplay: !!userColorDisplay,
+                hasPiggyMessage: !!piggyMessage
+            });
+            
+            // Get user's color from the competition data if available
+            let userColor = null;
+            if (competitionData && competitionData.participants) {
+                const userParticipant = Object.values(competitionData.participants).find(p => p.userId === user.userId);
+                userColor = userParticipant?.color;
+                console.log('🐷 User color from competition data:', {
+                    found: !!userParticipant,
+                    color: userColor,
+                    userId: user.userId
+                });
+            }
+            
+            // Fallback to room color from localStorage
+            if (!userColor) {
+                userColor = room?.color;
+                console.log('🐷 User color from localStorage:', userColor);
+            }
+            
+            if (userColor && piggyBankSection && userColorDisplay && piggyMessage && userIsWinner) {
+                userColorDisplay.style.background = userColor;
+                
+                // Display color information without revealing the winner
+                piggyMessage.innerHTML = `<strong>Your Piggy Bank Color</strong><br><span style="font-size: 14px; color: var(--muted);">Check the piggy bank so see if you have won!</span>`;
+                
+                // Now that content is set, show the section
+                piggyBankSection.style.display = 'flex';
+                
+                console.log('🐷 Piggy bank color section displayed:', userColor);
+            }
+
+            // Hide loading state and show content
+            loadingState.style.display = 'none';
+            contentState.style.display = 'block';
 
             rematchBtn?.addEventListener('click', async () => {
                 console.log('Rematch button clicked');

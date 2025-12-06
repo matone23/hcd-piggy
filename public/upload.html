@@ -20,30 +20,21 @@
         </header>
 
         <section class="card stack mt-24">
-            <div class="muted" id="taskTitle">Selected task</div>
-            <label class="btn btn-primary" style="text-align:center; cursor:pointer; width:100%;">
-                <input type="file" accept="image/*" capture="environment" id="fileInput" style="display:none;">
-                📸 Take/Choose Photo
-            </label>
-            
-            <!-- Alternative button for mobile users having issues -->
-            <button class="btn btn-outline" id="altFileBtn" style="width:100%; margin-top:8px;">
-                🖼️ Try Alternative Upload
-            </button>
+            <div class="muted" id="taskTitle"></div>
+            <div class="stack" style="gap: 10px;">
+                <label class="btn btn-primary" style="text-align:center; cursor:pointer; width:100%;">
+                    <input type="file" accept="image/*" capture="environment" id="cameraInput" style="display:none;">
+                    📷 Take Photo
+                </label>
+                <label class="btn btn-outline" style="text-align:center; cursor:pointer; width:100%;">
+                    <input type="file" accept="image/*" id="galleryInput" style="display:none;">
+                    🖼️ Choose from Gallery
+                </label>
+            </div>
             
             <div id="previewWrap" class="stack" style="display:none;">
                 <div class="muted">Photo Preview</div>
                 <img id="previewImg" alt="Preview" style="width:100%; border-radius: var(--radius-lg); border:1px solid var(--border);">
-                
-                <div class="input-group">
-                    <label for="descriptionInput">Description (optional)</label>
-                    <textarea id="descriptionInput" 
-                             placeholder="Add a note about your progress..." 
-                             style="min-height: 80px; resize: vertical;"
-                             maxlength="300"></textarea>
-                    <div class="muted" style="font-size: 12px; text-align: right;" id="charCount">0/300</div>
-                </div>
-                
                 <button class="btn btn-primary" id="nextBtn">Submit Proof</button>
             </div>
         </section>
@@ -110,42 +101,26 @@
             const previewImg = document.getElementById('previewImg');
             const taskTitle = document.getElementById('taskTitle');
             const nextBtn = document.getElementById('nextBtn');
-            const descriptionInput = document.getElementById('descriptionInput');
-            const charCount = document.getElementById('charCount');
 
             if (taskTitle) {
-                taskTitle.textContent = proof.task ? `${proof.task.label || 'Task'} · ${proof.task.desc || ''}` : 'Selected task';
-            }            // Character counter for description
-            descriptionInput?.addEventListener('input', (e) => {
-                const count = e.target.value.length;
-                if (charCount) {
-                    charCount.textContent = `${count}/300`;
-                    charCount.style.color = count > 280 ? '#FF3B30' : '';
-                }
-            });
-
-            // Main file input handler
-            fileInput?.addEventListener('change', (e) => {
-                handleFileSelection(e.target.files[0]);
-            });
+                const taskText = proof.task?.text || proof.task?.label || 'Task';
+                const taskDesc = proof.task?.desc || (proof.task?.minutes ? `${proof.task.minutes}min` : '');
+                taskTitle.textContent = taskDesc ? `${taskText} · ${taskDesc}` : taskText;
+            }
             
-            // Alternative file upload for mobile issues
-            document.getElementById('altFileBtn')?.addEventListener('click', () => {
-                // Create a new input element to ensure fresh state
-                const newInput = document.createElement('input');
-                newInput.type = 'file';
-                newInput.accept = 'image/jpeg,image/jpg,image/png,image/webp';
-                newInput.capture = 'environment';
-                newInput.style.display = 'none';
-                
-                newInput.addEventListener('change', (e) => {
+            // Get both file inputs
+            const cameraInput = document.getElementById('cameraInput');
+            const galleryInput = document.getElementById('galleryInput');
+            
+            // Handle both camera and gallery inputs
+            const handleFileInput = (input) => {
+                input?.addEventListener('change', (e) => {
                     handleFileSelection(e.target.files[0]);
                 });
-                
-                document.body.appendChild(newInput);
-                newInput.click();
-                setTimeout(() => document.body.removeChild(newInput), 1000);
-            });
+            };
+            
+            handleFileInput(cameraInput);
+            handleFileInput(galleryInput);
             
             // Centralized file handling function
             const handleFileSelection = (file) => {
@@ -264,10 +239,6 @@
                     nextBtn.disabled = true;
                     nextBtn.textContent = 'Uploading...';
                     
-                    const description = descriptionInput?.value?.trim() || '';
-
-
-                    
                     // Get consistent user ID (Firebase UID if available, otherwise localStorage ID)
                     const currentUser = app.getCurrentUser();
                     const userId = currentUser?.uid || user.userId;
@@ -360,7 +331,6 @@
                         const submissionData = {
                             ...proof,
                             imageUrl: imageUrl, // Store URL instead of base64 data
-                            description: description,
                             submittedAt: Date.now(),
                             submittedBy: user.nickname,
                             userId: userId,

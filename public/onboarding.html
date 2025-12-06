@@ -371,6 +371,13 @@
                         color: selectedColor,
                         moneyPledge: true,
                         nickname: user.nickname,
+                        goals: mode === 'routine'
+                            ? [
+                                { label: 'Min', desc: routineInputs.min?.value?.trim(), points: 2 },
+                                { label: 'More', desc: routineInputs.more?.value?.trim(), points: 5 },
+                                { label: 'Max', desc: routineInputs.max?.value?.trim(), points: 10 }
+                              ]
+                            : todos.map(todo => ({ ...todo, done: false })),
                         completedAt: Date.now(),
                         onboardingComplete: true // Add flag to indicate onboarding is done
                     };

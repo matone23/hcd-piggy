@@ -17,7 +17,9 @@
         </header>
 
         <section class="stack mt-24" id="lobbyContent">
-            <!-- Active room will be inserted here dynamically -->
+            <div id="oldCompetitionsSection" style="display: none;">
+                <div id="oldCompetitionsContainer"></div>
+            </div>
             
             <div class="card" id="createRoomCard">
                 <div class="stack">
@@ -148,12 +150,35 @@
             const lobbyContent = document.getElementById('lobbyContent');
             const createRoomCard = document.getElementById('createRoomCard');
             const joinRoomCard = document.getElementById('joinRoomCard');
+            const oldCompetitionsSection = document.getElementById('oldCompetitionsSection');
+            const oldCompetitionsContainer = document.getElementById('oldCompetitionsContainer');
 
             console.log('Active room check:', activeRoom);
 
-            // Handle active room display
-            if (activeRoom && activeRoom.id) {
-                console.log('User has active room:', activeRoom.name);
+            // Fetch fresh room data from Firebase if available to get correct participant count
+            let freshRoomData = activeRoom;
+            if (activeRoom && activeRoom.id && app.isFirebaseReady()) {
+                try {
+                    const fbRoom = await app.getRoom(activeRoom.id);
+                    if (fbRoom) {
+                        console.log('📡 Fetched fresh room data from Firebase');
+                        freshRoomData = fbRoom;
+                        // Update localStorage with fresh data
+                        app.saveActiveRoom(freshRoomData);
+                    }
+                } catch (error) {
+                    console.warn('Could not fetch fresh room data, using cached:', error);
+                    freshRoomData = activeRoom;
+                }
+            }
+
+            // Check if the active room has ended
+            const roomHasEnded = freshRoomData && freshRoomData.id && app.isCompetitionEnded(freshRoomData);
+            console.log('Room ended status:', { hasRoom: !!freshRoomData?.id, hasEnded: roomHasEnded });
+
+            // Handle active/ended room display
+            if (freshRoomData && freshRoomData.id && !roomHasEnded) {
+                console.log('User has active room:', freshRoomData.name);
                 
                 // Create active room card
                 const activeRoomCard = document.createElement('div');
@@ -163,11 +188,11 @@
                     <div class="stack">
                         <div>
                             <div class="badge" style="background: #00E054; color: white;">Active Room</div>
-                            <h1 style="margin: 8px 0 4px;">${activeRoom.name || 'Your Room'}</h1>
+                            <h1 style="margin: 8px 0 4px;">${freshRoomData.name || 'Your Room'}</h1>
                             <p style="margin: 4px 0;">You're already in a room. Continue your progress!</p>
                             <div class="muted" style="font-size: 14px;">
-                                Room Code: <strong>${activeRoom.id}</strong> • 
-                                ${activeRoom.participants ? Object.keys(activeRoom.participants).length : 1} participant(s)
+                                Room Code: <strong>${freshRoomData.id}</strong> • 
+                                ${freshRoomData.participants ? Object.keys(freshRoomData.participants).length : 1} participant(s)
                             </div>
                         </div>
                         <button class="btn btn-primary" id="goToRoomBtn" style="background: #00E054;">
@@ -220,6 +245,80 @@
                 if (joinCode) {
                     joinCode.disabled = true;
                 }
+            } else if (roomHasEnded) {
+                console.log('Room has ended, moving to old competitions section');
+                
+                // Show old competitions section
+                oldCompetitionsSection.style.display = 'block';
+                
+                // Create ended room card in old competitions
+                const endedRoomCard = document.createElement('div');
+                endedRoomCard.className = 'card';
+                endedRoomCard.style.border = '1px solid var(--border)';
+                endedRoomCard.style.opacity = '0.7';
+                endedRoomCard.innerHTML = `
+                    <div class="stack">
+                        <div>
+                            <div class="badge" style="background: rgba(100,100,100,0.2); color: var(--muted);">Completed</div>
+                            <h1 style="margin: 8px 0 4px;">${activeRoom.name || 'Completed Competition'}</h1>
+                            <p style="margin: 4px 0; color: var(--muted);">This competition has ended.</p>
+                            <div class="muted" style="font-size: 14px;">
+                                Room Code: <strong>${activeRoom.id}</strong> • 
+                                ${activeRoom.participants ? Object.keys(activeRoom.participants).length : 1} participant(s)
+                            </div>
+                        </div>
+                        <button class="btn btn-outline" id="viewResultsBtn">
+                            🏆 View Results
+                        </button>
+                    </div>
+                `;
+                
+                oldCompetitionsContainer.appendChild(endedRoomCard);
+                
+                // Add click handler for view results
+                const viewResultsBtn = endedRoomCard.querySelector('#viewResultsBtn');
+                viewResultsBtn?.addEventListener('click', () => {
+                    localStorage.setItem('piggy-habit-room', JSON.stringify(activeRoom));
+                    window.location.href = 'result.html';
+                });
+                
+                // Clear active room to allow new creations/joins
+                console.log('Clearing ended room from active status');
+                app.clearActiveRoom();
+                
+                // Create and show new room cards
+                createRoomCard.style.opacity = '1';
+                createRoomCard.style.pointerEvents = 'auto';
+                joinRoomCard.style.opacity = '1';
+                joinRoomCard.style.pointerEvents = 'auto';
+                
+                const createBadge = createRoomCard.querySelector('.badge');
+                const joinBadge = joinRoomCard.querySelector('.badge');
+                
+                if (createBadge) createBadge.textContent = 'Create Room';
+                if (joinBadge) joinBadge.textContent = 'Join Room';
+                
+                const createTitle = createRoomCard.querySelector('h1');
+                const joinTitle = joinRoomCard.querySelector('h1');
+                const createDesc = createRoomCard.querySelector('p');
+                const joinDesc = joinRoomCard.querySelector('p');
+                
+                if (createTitle) createTitle.textContent = 'Start a new competition';
+                if (joinTitle) joinTitle.textContent = 'Enter 6-digit code';
+                if (createDesc) createDesc.textContent = 'Pick routine or 1-day mode and invite friends.';
+                if (joinDesc) joinDesc.textContent = 'Friends can share a code from their room.';
+                
+                if (createBtn) {
+                    createBtn.textContent = 'Create';
+                    createBtn.disabled = false;
+                }
+                if (joinBtn) {
+                    joinBtn.textContent = 'Join Room';
+                    joinBtn.disabled = false;
+                }
+                if (joinCode) {
+                    joinCode.disabled = false;
+                }
             } else {
                 console.log('No active room, showing normal lobby options');
             }
@@ -236,8 +335,9 @@
             }
 
             createBtn?.addEventListener('click', async () => {
-                // Check localStorage for active room
-                const hasActiveRoom = activeRoom && activeRoom.id;
+                // Check current active room status (not the cached variable)
+                const currentActiveRoom = app.getActiveRoom();
+                const hasActiveRoom = currentActiveRoom && currentActiveRoom.id;
                 
                 if (hasActiveRoom) {
                     app.showToast('You already have an active room. Go to your room or logout to create a new one.');
@@ -249,7 +349,9 @@
             });
 
             joinBtn?.addEventListener('click', async () => {
-                if (activeRoom && activeRoom.id) {
+                // Check current active room status (not the cached variable)
+                const currentActiveRoom = app.getActiveRoom();
+                if (currentActiveRoom && currentActiveRoom.id) {
                     app.showToast('You already have an active room. Go to your room or logout to join another.');
                     return;
                 }

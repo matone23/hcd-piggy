@@ -861,6 +861,38 @@ const app = (() => {
 
     const generateId = () => `user_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 6)}`;
 
+    // Check if a competition has ended
+    const isCompetitionEnded = (roomData) => {
+        if (!roomData) return false;
+        
+        // Check if manually ended
+        if (roomData.manuallyEnded) {
+            return true;
+        }
+        
+        // Check by mode
+        if (roomData.mode === 'routine') {
+            // Competition ends when duration is exceeded
+            const startDate = new Date(roomData.createdAt || Date.now());
+            const today = new Date();
+            const daysSinceStart = Math.floor((today - startDate) / (1000 * 60 * 60 * 24)) + 1;
+            const duration = roomData.duration || 30;
+            return daysSinceStart > duration;
+        } else if (roomData.mode === 'oneday') {
+            // Competition ends when deadline passes
+            const deadline = roomData.dday;
+            if (deadline) {
+                const deadlineDate = new Date(deadline);
+                const today = new Date();
+                deadlineDate.setHours(23, 59, 59, 999);
+                return today > deadlineDate;
+            }
+            return false;
+        }
+        
+        return false;
+    };
+
     return {
         showToast,
         generateId,
@@ -882,6 +914,7 @@ const app = (() => {
         getRoom,
         joinRoom,
         subscribeToRoom,
+        isCompetitionEnded,
         initializeFirebase,
         isFirebaseReady: () => ({
             isReady: isFirebaseReady,

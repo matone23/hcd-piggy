@@ -20,18 +20,6 @@
     </header>
 
     <main class="page" style="padding-top:16px;">
-        <!-- Challenge Progress Section -->
-        <div id="dayCounterSection" class="card" style="margin-bottom: 12px; padding: 12px; background: #f8f9fa; border: 1px solid #dee2e6;">
-            <div style="text-align: center;">
-                <div id="dayCounterTitle" style="font-size: 12px; color: #6c757d; margin-bottom: 4px;">Challenge Progress</div>
-                <div id="dayCounterText" style="font-size: 18px; font-weight: 700; color: #495057; margin-bottom: 8px;">Loading...</div>
-                <div id="dayCounterProgress" style="width: 100%; height: 6px; background: #dee2e6; border-radius: 3px; overflow: hidden;">
-                    <div id="dayCounterBar" style="height: 100%; background: linear-gradient(90deg, #00E054 0%, #00b045 100%); width: 0%; transition: width 0.3s ease;"></div>
-                </div>
-                <div id="dayCounterSubtext" style="font-size: 12px; color: #6c757d; margin-top: 6px;">Keep up the momentum!</div>
-            </div>
-        </div>
-        
         <!-- Room Code Section -->
         <div class="card" style="margin-bottom: 12px; padding: 12px; background: #f8f9fa; border: 1px solid #dee2e6;">
             <div style="text-align: center;">
@@ -58,14 +46,18 @@
             </div>
         </div>
 
+        <div id="competitionEndedBanner" class="card" style="margin-bottom: 12px; text-align: center; background: #ffe4e1; border: 1px solid #ffb3a7; display: none;">
+            <div style="font-weight: 700; color: #c41e3a; font-size: 16px;">⏰ Competition Has Ended</div>
+        </div>
+
+        <div id="resultButtonContainer" class="card" style="margin-bottom: 12px; text-align: center; display: none;">
+            <button class="btn btn-primary" type="button" onclick="window.location.href='result.html'" style="width: 100%;">🏆 View Results</button>
+        </div>
+
         <div class="tab-bar">
             <div class="tab active" data-tab="mission">🔥 My Mission</div>
             <div class="tab" data-tab="feed">👀 Feed</div>
             <div class="tab" data-tab="rank">🏆 Ranking</div>
-        </div>
-        
-        <div class="between flex" style="margin-bottom:12px;">
-            <div id="resultButtonContainer"></div>
         </div>
 
         <section id="missionTab" class="stack"></section>
@@ -171,6 +163,14 @@
             const roomName = roomData.name || 'Competition Room';
             const mode = roomData.mode || 'routine';
             const color = roomData.color || '#00E054';
+            
+            console.log('🔍 ROOM DATA LOADED:', {
+                roomDataFull: roomData,
+                mode: mode,
+                name: roomName,
+                hasMode: 'mode' in roomData,
+                roomDataMode: roomData.mode
+            });
             
             // Set basic UI elements immediately
             document.title = `Piggy Habit | ${roomName}`;
@@ -342,6 +342,7 @@
                             participants: Object.keys(firebaseRoom.participants || {}).length,
                             submissions: Object.keys(firebaseRoom.submissions || {}).length,
                             roomId: roomData.id,
+                            mode: firebaseRoom.mode,
                             loadTime: `${loadTime}ms`
                         });
                         
@@ -367,11 +368,10 @@
                             console.warn('⚠️ No participants found in Firebase room data');
                         }
                         
-                        // Update UI with fresh data
-                        updateParticipantCount();
-                        updateDayCounter();
-                        refreshRanking();
-                        updateFeed();
+                        // Update UI with fresh data (only if functions are already defined)
+                        if (typeof updateParticipantCount === 'function') updateParticipantCount();
+                        if (typeof refreshRanking === 'function') refreshRanking();
+                        if (typeof updateFeed === 'function') updateFeed();
                         
                         // Save essential data (non-blocking)
                         setTimeout(() => saveEssentialData(roomData), 0);
@@ -394,11 +394,13 @@
                         nickname: data.nickname,
                         color: data.color,
                         goals: data.goals,
+                        mode: data.mode,
                         onboardingComplete: data.onboardingComplete,
                         createdAt: data.createdAt,
                         duration: data.duration
                     };
                     localStorage.setItem('piggy-habit-room', JSON.stringify(essentialData));
+                    console.log('💾 Saved essential data to localStorage with mode:', data.mode);
                 } catch (error) {
                     // Ignore localStorage errors
                 }
@@ -429,10 +431,9 @@
                                 });
                                 
                                 participants = newParticipants;
-                                updateParticipantCount();
-                                updateDayCounter();
-                                refreshRanking();
-                                updateFeed(); // Also update feed when participants change
+                                if (typeof updateParticipantCount === 'function') updateParticipantCount();
+                                if (typeof refreshRanking === 'function') refreshRanking();
+                                if (typeof updateFeed === 'function') updateFeed(); // Also update feed when participants change
                             }
                         }
                         
@@ -442,8 +443,8 @@
                             const oldSubmissionData = JSON.stringify(roomData.submissions || {});
                             if (newSubmissionData !== oldSubmissionData) {
                                 console.log('📝 Submissions changed, updating feed and rankings');
-                                updateFeed();
-                                refreshRanking(); // Rankings might change due to approved submissions
+                                if (typeof updateFeed === 'function') updateFeed();
+                                if (typeof refreshRanking === 'function') refreshRanking(); // Rankings might change due to approved submissions
                             }
                         }
                         
@@ -463,17 +464,24 @@
             // Helper functions for UI updates
             const updateParticipantCount = () => {
                 if (leaderBanner && participants.length > 0) {
-                    const leader = getLeader();
-                    const iAmLeader = leader && leader.nickname === user.nickname;
-                    
-                    if (participants.length <= 1) {
-                        leaderBanner.textContent = `${participants.length} participant in room`;
-                    } else if (leader) {
-                        leaderBanner.textContent = iAmLeader
-                            ? 'You are leading! Keep the pace!'
-                            : `👑 ${leader.nickname} is leading with ${leader.calculatedPoints || 0} pts!`;
+                    if (mode === 'routine') {
+                        const leader = getLeader();
+                        const iAmLeader = leader && leader.nickname === user.nickname;
+                        
+                        if (participants.length <= 1) {
+                            leaderBanner.textContent = `${participants.length} participant in room`;
+                        } else if (leader) {
+                            leaderBanner.textContent = iAmLeader
+                                ? 'You are leading! Keep the pace!'
+                                : `👑 ${leader.nickname} is leading with ${leader.calculatedPoints || 0} pts!`;
+                        } else {
+                            leaderBanner.textContent = `${participants.length} participants in room`;
+                        }
                     } else {
-                        leaderBanner.textContent = `${participants.length} participants in room`;
+                        // For oneday mode, show participant count
+                        leaderBanner.textContent = participants.length === 1
+                            ? '1 participant in room'
+                            : `${participants.length} participants in room`;
                     }
                 }
             };
@@ -505,11 +513,44 @@
             
             const updateFeed = () => {
                 if (feedTab && feedTab.style.display !== 'none') {
-                    // Regenerate feed data from updated submissions
-                    const newFeedData = generateFeedData();
-                    // Update the global feedData and re-render
-                    feedData.length = 0;
-                    feedData.push(...newFeedData);
+                    // Only regenerate feed data if the feed is empty or was showing "no activity"
+                    // Otherwise, just render which will do smart incremental updates
+                    if (feedTab.children.length === 0 || (feedTab.firstChild && feedTab.firstChild.textContent.includes('No activity yet'))) {
+                        const newFeedData = generateFeedData();
+                        feedData.length = 0;
+                        feedData.push(...newFeedData);
+                    } else {
+                        // For existing feeds, do a smart update that only adds/updates changed items
+                        const newFeedData = generateFeedData();
+                        
+                        // Compare old and new data to find changes
+                        // We'll merge: keep existing cards, add new ones, update changed ones
+                        for (let i = 0; i < newFeedData.length; i++) {
+                            const newCard = newFeedData[i];
+                            const oldCardIndex = feedData.findIndex(card => 
+                                (card.submissionId && card.submissionId === newCard.submissionId) ||
+                                (!card.submissionId && card.userId === newCard.userId && card.timestamp === newCard.timestamp)
+                            );
+                            
+                            if (oldCardIndex === -1) {
+                                // New card, add it
+                                feedData.splice(i, 0, newCard);
+                            } else if (oldCardIndex !== i) {
+                                // Card position changed, move it
+                                const [moved] = feedData.splice(oldCardIndex, 1);
+                                feedData.splice(i, 0, moved);
+                            } else {
+                                // Card exists at same position, update its data
+                                feedData[i] = { ...feedData[i], ...newCard };
+                            }
+                        }
+                        
+                        // Remove cards that no longer exist
+                        while (feedData.length > newFeedData.length) {
+                            feedData.pop();
+                        }
+                    }
+                    
                     renderFeed();
                 }
             };
@@ -544,65 +585,6 @@
                 return { needsSetup, userParticipant };
             };
             
-            // Day Counter functionality
-            const updateDayCounter = () => {
-                const dayCounterText = document.getElementById('dayCounterText');
-                const dayCounterBar = document.getElementById('dayCounterBar');
-                const dayCounterSubtext = document.getElementById('dayCounterSubtext');
-                
-                if (!dayCounterText || !roomData) return;
-                
-                if (mode === 'routine') {
-                    // Calculate days since room creation
-                    const startDate = new Date(roomData.createdAt || Date.now());
-                    const today = new Date();
-                    const daysSinceStart = Math.floor((today - startDate) / (1000 * 60 * 60 * 24)) + 1;
-                    const duration = roomData.duration || 30;
-                    const daysLeft = Math.max(0, duration - daysSinceStart + 1);
-                    const progressPercent = Math.min(100, (daysSinceStart / duration) * 100);
-                    
-                    // Update progress bar
-                    if (dayCounterBar) {
-                        dayCounterBar.style.width = `${progressPercent}%`;
-                        
-                        // Change color based on progress
-                        if (progressPercent >= 90) {
-                            dayCounterBar.style.background = 'linear-gradient(90deg, #ffd700 0%, #ffed4e 100%)';
-                        } else if (progressPercent >= 70) {
-                            dayCounterBar.style.background = 'linear-gradient(90deg, #ff9500 0%, #ffad33 100%)';
-                        } else {
-                            dayCounterBar.style.background = 'linear-gradient(90deg, #00E054 0%, #00b045 100%)';
-                        }
-                    }
-                    
-                    // Update text based on progress
-                    if (daysSinceStart === 1) {
-                        dayCounterText.textContent = `🌟 Day ${daysSinceStart} of ${duration}`;
-                        if (dayCounterSubtext) dayCounterSubtext.textContent = "Let's begin this journey!";
-                    } else if (daysLeft > 1) {
-                        dayCounterText.textContent = `🔥 Day ${daysSinceStart} of ${duration}`;
-                        if (dayCounterSubtext) dayCounterSubtext.textContent = `${daysLeft} days remaining - keep going!`;
-                    } else if (daysLeft === 1) {
-                        dayCounterText.textContent = `⚡ Day ${daysSinceStart} of ${duration}`;
-                        if (dayCounterSubtext) dayCounterSubtext.textContent = "Final day - finish strong!";
-                    } else if (daysSinceStart > duration) {
-                        dayCounterText.textContent = `🎉 Challenge Complete!`;
-                        if (dayCounterSubtext) dayCounterSubtext.textContent = `${duration} days finished - amazing work!`;
-                    } else {
-                        dayCounterText.textContent = `🔥 Day ${daysSinceStart} of ${duration}`;
-                        if (dayCounterSubtext) dayCounterSubtext.textContent = "Keep up the momentum!";
-                    }
-                } else {
-                    // One-day challenge
-                    dayCounterText.textContent = '⚡ One-Day Challenge';
-                    if (dayCounterSubtext) dayCounterSubtext.textContent = 'Complete your goals today!';
-                    if (dayCounterBar) {
-                        dayCounterBar.style.width = '100%';
-                        dayCounterBar.style.background = 'linear-gradient(90deg, #ff6b6b 0%, #ee5a52 100%)';
-                    }
-                }
-            };
-
             // Get DOM elements
             const fileCapture = document.getElementById('fileCapture');
 
@@ -643,7 +625,6 @@
             
             // Show initial UI state
             updateParticipantCount();
-            updateDayCounter();
             
             // Load Firebase data asynchronously
             loadFirebaseData();
@@ -720,24 +701,152 @@
             // --- Mission Tab ---
             // Only use participant-specific goals, never room goals
             let goals = null;
-            const currentUserParticipant = participants.find(p => 
-                p.userId === (app.getCurrentUser()?.uid || user.userId) || 
-                p.nickname === user.nickname
-            );
+            let currentUserParticipant = null;
+            
+            // ALWAYS fetch fresh participant data from Firebase for goals (especially for oneday mode)
+            if (app.isFirebaseReady() && roomData.id) {
+                try {
+                    console.log('📡 Fetching fresh participant data from Firebase for goals...');
+                    const firebaseRoom = await app.getRoom(roomData.id);
+                    if (firebaseRoom && firebaseRoom.participants) {
+                        const firebaseUserId = app.getCurrentUser()?.uid;
+                        const cachedUserId = user.userId;
+                        const nickname = user.nickname;
+                        
+                        console.log('🔍 Searching for participant in Firebase:', { firebaseUserId, cachedUserId, nickname });
+                        
+                        // Try to find the current user in Firebase data
+                        if (firebaseUserId && firebaseRoom.participants[firebaseUserId]) {
+                            currentUserParticipant = firebaseRoom.participants[firebaseUserId];
+                            console.log('✅ Found participant in Firebase by Firebase UID');
+                        } else if (cachedUserId && firebaseRoom.participants[cachedUserId]) {
+                            currentUserParticipant = firebaseRoom.participants[cachedUserId];
+                            console.log('✅ Found participant in Firebase by cached user ID');
+                        } else {
+                            // Fallback: search by nickname
+                            currentUserParticipant = Object.values(firebaseRoom.participants).find(p => p.nickname === nickname);
+                            if (currentUserParticipant) {
+                                console.log('✅ Found participant in Firebase by nickname');
+                            } else {
+                                console.warn('⚠️ Could not find participant in Firebase by any method');
+                                console.log('Available participants:', Object.values(firebaseRoom.participants).map(p => ({ userId: p.userId, nickname: p.nickname })));
+                            }
+                        }
+                    } else {
+                        console.warn('⚠️ No participants found in Firebase room data');
+                    }
+                } catch (error) {
+                    console.warn('Could not fetch fresh participant data from Firebase:', error);
+                    // Continue with cached data as fallback
+                    currentUserParticipant = participants.find(p => 
+                        p.userId === (app.getCurrentUser()?.uid || user.userId) || 
+                        p.nickname === user.nickname
+                    );
+                }
+            } else {
+                // Fallback to cached data if Firebase not available
+                currentUserParticipant = participants.find(p => 
+                    p.userId === (app.getCurrentUser()?.uid || user.userId) || 
+                    p.nickname === user.nickname
+                );
+            }
+            
+            // Helper function to normalize goals to match the room mode
+            const normalizeGoals = (rawGoals, roomMode) => {
+                if (!rawGoals || !Array.isArray(rawGoals) || rawGoals.length === 0) {
+                    return null;
+                }
+                
+                console.log('🔧 normalizeGoals called:', { roomMode, rawGoalsLength: rawGoals.length, rawGoals });
+                
+                return rawGoals.map((goal, idx) => {
+                    if (roomMode === 'routine') {
+                        // Routine mode needs: label, desc, points
+                        // Spread first, then override with required properties
+                        const normalized = {
+                            ...goal,
+                            label: goal.label || `Goal ${idx + 1}`,
+                            desc: goal.desc || goal.text || 'Complete this goal',
+                            points: goal.points || 5
+                        };
+                        console.log(`  Goal ${idx} normalized to routine:`, { 
+                            before: goal, 
+                            after: normalized,
+                            label: normalized.label,
+                            desc: normalized.desc,
+                            points: normalized.points
+                        });
+                        return normalized;
+                    } else {
+                        // Oneday mode needs: text, minutes
+                        // Spread first, then override with required properties
+                        const normalized = {
+                            ...goal,
+                            text: goal.text || goal.label || `Task ${idx + 1}`,
+                            minutes: goal.minutes || 0,
+                            done: goal.done || false
+                        };
+                        console.log(`  Goal ${idx} normalized to oneday:`, { 
+                            before: goal, 
+                            after: normalized,
+                            text: normalized.text,
+                            minutes: normalized.minutes
+                        });
+                        return normalized;
+                    }
+                });
+            };
             
             if (currentUserParticipant && currentUserParticipant.goals && currentUserParticipant.goals.length > 0) {
-                goals = currentUserParticipant.goals;
+                goals = normalizeGoals(currentUserParticipant.goals, mode);
                 console.log('✅ Using participant-specific goals for', currentUserParticipant.nickname, ':', goals);
+                console.log('📋 Goal structure check:', {
+                    goalsLength: goals.length,
+                    firstGoal: goals[0],
+                    allGoals: goals.map((g, idx) => ({
+                        idx,
+                        keys: Object.keys(g),
+                        text: g.text,
+                        minutes: g.minutes,
+                        label: g.label,
+                        desc: g.desc,
+                        points: g.points
+                    }))
+                });
+            } else if (roomData.goals && roomData.goals.length > 0) {
+                // Fallback to roomData.goals if participant doesn't have goals
+                goals = normalizeGoals(roomData.goals, mode);
+                console.log('✅ Using room-level goals as fallback:', goals);
+                console.log('📋 Goal structure check (from roomData):', {
+                    goalsLength: goals.length,
+                    firstGoal: goals[0],
+                    allGoals: goals.map((g, idx) => ({
+                        idx,
+                        keys: Object.keys(g),
+                        text: g.text,
+                        minutes: g.minutes,
+                        label: g.label,
+                        desc: g.desc,
+                        points: g.points
+                    }))
+                });
             } else {
-                // Only use default goals if participant has no goals set
-                goals = [
-                    { label: 'Min', desc: 'Basic goal', points: 2 },
-                    { label: 'More', desc: 'Regular goal', points: 5 },
-                    { label: 'Max', desc: 'Stretch goal', points: 10 },
-                ];
-                console.log('⚠️ No participant-specific goals found, using default goals');
+                // Only use default goals if no goals found anywhere
+                goals = mode === 'routine'
+                    ? [
+                        { label: 'Min', desc: 'Basic goal', points: 2 },
+                        { label: 'More', desc: 'Regular goal', points: 5 },
+                        { label: 'Max', desc: 'Stretch goal', points: 10 },
+                      ]
+                    : [
+                        { text: 'Task 1', minutes: 10, done: false },
+                        { text: 'Task 2', minutes: 10, done: false },
+                        { text: 'Task 3', minutes: 10, done: false },
+                      ];
+                console.log('⚠️ No participant-specific goals found, using default goals for mode:', mode);
                 console.log('Debug info:', {
-                    currentUserParticipant: currentUserParticipant ? { userId: currentUserParticipant.userId, nickname: currentUserParticipant.nickname, hasGoals: !!currentUserParticipant.goals } : null,
+                    currentUserParticipant: currentUserParticipant ? { userId: currentUserParticipant.userId, nickname: currentUserParticipant.nickname, hasGoals: !!currentUserParticipant.goals, goals: currentUserParticipant.goals } : null,
+                    roomDataGoals: roomData.goals,
                     allParticipants: participants.map(p => ({ userId: p.userId, nickname: p.nickname, hasGoals: !!p.goals })),
                     searchUserId: app.getCurrentUser()?.uid || user.userId,
                     searchNickname: user.nickname
@@ -777,15 +886,57 @@
                 gap: iAmLeader ? 0 : Math.max(0, (leaderData?.calculatedPoints || 0) - currentUserPoints),
             };
 
-            const oneDayState = {
-                tasks: Array.isArray(goals) ? goals.map((g, idx) => ({ 
-                    ...g, 
-                    done: latestSubmission?.status === 'approved' && latestSubmission.task?.idx === idx,
-                    pending: latestSubmission?.status === 'pending' && latestSubmission.task?.idx === idx,
-                    rejected: latestSubmission?.status === 'rejected' && latestSubmission.task?.idx === idx,
-                    idx 
-                })) : [],
+            // Only create oneDayState for oneday mode
+            // For oneday missions, use the deadline date instead of today's date to persist submissions across date boundaries
+            const getOneDayReferenceDate = () => {
+                if (mode === 'oneday' && roomData.dday) {
+                    // Use the deadline date to ensure submissions from the mission day are counted
+                    const ddayDate = new Date(roomData.dday);
+                    return ddayDate.toDateString();
+                }
+                return new Date().toDateString();
             };
+            const oneDayReferenceDate = getOneDayReferenceDate();
+            
+            const oneDayState = mode === 'oneday' ? {
+                tasks: Array.isArray(goals) ? goals.map((g, idx) => {
+                    // For oneday mode, ONLY use text and minutes, ignore routine properties
+                    // Filter submissions by deadline date, not by today's date
+                    const deadlineSubmissions = roomData.submissions ? 
+                        Object.values(roomData.submissions).filter(s => 
+                            s.userId === currentUserId && 
+                            new Date(s.submittedAt).toDateString() === oneDayReferenceDate
+                        ) : [];
+                    const latestDeadlineSubmission = deadlineSubmissions.length > 0 ? 
+                        deadlineSubmissions[deadlineSubmissions.length - 1] : null;
+                    
+                    const task = { 
+                        text: g.text || `Task ${idx + 1}`,
+                        minutes: g.minutes || 0,
+                        done: latestDeadlineSubmission?.status === 'approved' && latestDeadlineSubmission.task?.idx === idx,
+                        pending: latestDeadlineSubmission?.status === 'pending' && latestDeadlineSubmission.task?.idx === idx,
+                        rejected: latestDeadlineSubmission?.status === 'rejected' && latestDeadlineSubmission.task?.idx === idx,
+                        idx 
+                    };
+                    console.log(`Task ${idx} structure:`, { keys: Object.keys(task), text: task.text, minutes: task.minutes });
+                    return task;
+                }) : [],
+            } : { tasks: [] };
+            
+            console.log('🔍 oneDayState.tasks structure:', {
+                taskCount: oneDayState.tasks.length,
+                firstTask: oneDayState.tasks[0],
+                allTasks: oneDayState.tasks.map((t, idx) => ({
+                    idx,
+                    keys: Object.keys(t),
+                    text: t.text,
+                    minutes: t.minutes,
+                    label: t.label,
+                    desc: t.desc,
+                    points: t.points,
+                    done: t.done
+                }))
+            });
 
         // Apply completion from proof
         if (mode === 'oneday' && proofDone?.task?.idx !== undefined) {
@@ -900,10 +1051,21 @@
             }
 
             // Goals already defined above, use them directly
-            goals.forEach(goal => {
+            console.log('🎯 renderRoutineMission rendering', goals?.length || 0, 'goals:', goals);
+            goals?.forEach(goal => {
+                console.log('Rendering goal:', {
+                    label: goal.label,
+                    desc: goal.desc,
+                    points: goal.points,
+                    text: goal.text,
+                    minutes: goal.minutes
+                });
                 const btn = document.createElement('button');
                 btn.className = 'btn btn-outline';
-                btn.textContent = `${goal.label} · ${goal.desc} (+${goal.points} pts)`;
+                const label = goal.label || 'Goal';
+                const desc = goal.desc || 'Complete this';
+                const points = goal.points || 5;
+                btn.textContent = `${label} · ${desc} (+${points} pts)`;
                 btn.addEventListener('click', () => triggerUpload(goal));
                 missionTab.appendChild(btn);
             });
@@ -912,6 +1074,13 @@
             const renderOneDayMission = () => {
                 if (!missionTab) return;
                 missionTab.innerHTML = '';
+                
+                console.log('🎬 renderOneDayMission called with:', {
+                    oneDayState,
+                    tasksCount: oneDayState.tasks.length,
+                    firstTask: oneDayState.tasks[0],
+                    mode
+                });
 
             const totalMinutes = oneDayState.tasks.reduce((sum, t) => sum + (t.minutes || 0), 0) || 1;
             const earned = oneDayState.tasks.filter(t => t.done).reduce((sum, t) => sum + (t.minutes || 0), 0);
@@ -927,6 +1096,7 @@
                 const row = document.createElement('div');
                 row.className = 'list-item flex between';
                 row.style.gap = '10px';
+                row.style.cursor = 'pointer';
 
                 const left = document.createElement('div');
                 left.className = 'flex';
@@ -936,6 +1106,7 @@
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.checked = task.done;
+                checkbox.disabled = true;
 
                 const textWrap = document.createElement('div');
                 const title = document.createElement('div');
@@ -960,36 +1131,11 @@
                 left.appendChild(badge);
                 left.appendChild(textWrap);
 
-                const cameraBtn = document.createElement('button');
-                cameraBtn.className = 'btn btn-outline btn-small';
-                cameraBtn.type = 'button';
-                cameraBtn.textContent = '📸';
-
                 row.appendChild(left);
-                row.appendChild(cameraBtn);
                 list.appendChild(row);
 
-                const openCamera = () => {
-                    fileCapture.click();
-                    fileCapture.onchange = (e) => {
-                        const file = e.target.files[0];
-                        if (!file) {
-                            checkbox.checked = false;
-                            return;
-                        }
-                        triggerUpload({ ...task, idx: task.idx });
-                    };
-                };
-
-                checkbox.addEventListener('change', () => {
-                    if (checkbox.checked) {
-                        openCamera();
-                    } else {
-                        task.done = false;
-                        renderOneDayMission();
-                    }
-                });
-                cameraBtn.addEventListener('click', openCamera);
+                // Click on the entire row to upload proof
+                row.addEventListener('click', () => triggerUpload({ ...task, idx: task.idx }));
             });
 
             missionTab.appendChild(list);
@@ -1106,20 +1252,29 @@
                         const rejectionCount = (submission.rejections || []).filter(userId => userId !== submission.userId).length;
                         const votersForThisSubmission = participants.filter(p => p.userId !== submission.userId).length;
                         
-                        // Enhanced status badge
+                        // Enhanced status badge - mode-aware formatting
                         let badge = 'Task';
                         if (submission.status === 'approved') {
-                            badge = `Approved (+${submission.task?.points || 0} pts)`;
+                            if (mode === 'oneday') {
+                                badge = 'Completed';
+                            } else {
+                                badge = `Approved (+${submission.task?.points || 0} pts)`;
+                            }
                         } else if (submission.status === 'rejected') {
                             badge = 'Rejected';
                         } else {
                             badge = `Pending (${approvalCount}/${votersForThisSubmission} votes)`;
                         }
                         
+                        // Get the task name - for oneday use 'text', for routine use 'desc'
+                        const taskName = mode === 'oneday' 
+                            ? (submission.task?.text || submission.task?.desc || 'task')
+                            : (submission.task?.desc || 'task');
+                        
                         feedData.push({
                             user: submission.submittedBy || 'Anonymous',
                             badge: badge,
-                            text: submission.description || `Completed: ${submission.task?.desc || 'task'}`,
+                            text: submission.description || `${mode === 'oneday' ? '' : 'Completed: '}${taskName}`,
                             time: timeText,
                             imageUrl: submission.imageUrl,
                             status: submission.status,
@@ -1162,7 +1317,8 @@
                 return feedData;
             };
             
-            const feedData = generateFeedData();
+            let feedData = generateFeedData();
+            let lastRenderedFeedIds = new Set(); // Track what we've already rendered
             
             // Handle approval/rejection of submissions
             const handleApproval = async (submission, isApproval, submissionId) => {
@@ -1265,7 +1421,11 @@
                     
                     // Show status message
                     if (newStatus === 'approved') {
-                        app.showToast(`🎉 Submission approved! ${submission.submittedBy} earned ${pointsEarned} points.`);
+                        if (mode === 'oneday') {
+                            app.showToast(`🎉 Submission approved! ${submission.submittedBy} completed the task.`);
+                        } else {
+                            app.showToast(`🎉 Submission approved! ${submission.submittedBy} earned ${pointsEarned} points.`);
+                        }
                     } else if (newStatus === 'rejected') {
                         app.showToast(`❌ Submission rejected. ${submission.submittedBy} can try again.`);
                     }
@@ -1278,186 +1438,233 @@
 
             const renderFeed = () => {
                 if (!feedTab) return;
-                feedTab.innerHTML = '';
                 
                 if (feedData.length === 0) {
-                    const emptyState = document.createElement('div');
-                    emptyState.className = 'card stack';
-                    emptyState.innerHTML = `
-                        <div style="text-align: center; color: var(--muted);">
-                            <div style="font-size: 48px; margin-bottom: 12px;">📝</div>
-                            <div style="font-weight: 700;">No activity yet</div>
-                            <div class="muted">Complete tasks to see updates here!</div>
-                        </div>
-                    `;
-                    feedTab.appendChild(emptyState);
+                    if (feedTab.children.length === 0) {
+                        const emptyState = document.createElement('div');
+                        emptyState.className = 'card stack';
+                        emptyState.innerHTML = `
+                            <div style="text-align: center; color: var(--muted);">
+                                <div style="font-size: 48px; margin-bottom: 12px;">📝</div>
+                                <div style="font-weight: 700;">No activity yet</div>
+                                <div class="muted">Complete tasks to see updates here!</div>
+                            </div>
+                        `;
+                        feedTab.appendChild(emptyState);
+                    }
                     return;
                 }
                 
+                // Only clear and re-render if we're showing completely empty state
+                if (feedTab.children.length === 0 || (feedTab.firstChild && feedTab.firstChild.textContent.includes('No activity yet'))) {
+                    feedTab.innerHTML = '';
+                }
+                
                 feedData.forEach((cardData, idx) => {
-                const card = document.createElement('div');
-                card.className = 'card stack';
-                
-                // Different styling based on submission status
-                if (cardData.status === 'approved') {
-                    card.style.border = '1px solid #00E054';
-                } else if (cardData.status === 'rejected') {
-                    card.style.border = '1px solid #ff3b30';
-                } else {
-                    card.style.border = '1px solid var(--border)';
-                }
-
-                const header = document.createElement('div');
-                header.className = 'between flex';
-                header.innerHTML = `
-                    <div>
-                        <div style="font-weight:700;">${cardData.user}</div>
-                        <div class="muted">${cardData.time}</div>
-                    </div>
-                    <div class="badge ${cardData.status === 'approved' ? 'badge-success' : cardData.status === 'rejected' ? 'badge-danger' : ''}">${cardData.badge}</div>
-                `;
-                card.appendChild(header);
-
-                const title = document.createElement('div');
-                title.style.fontWeight = '700';
-                title.textContent = cardData.text;
-                card.appendChild(title);
-                
-                // Add image if available (larger and more prominent)
-                if (cardData.imageUrl) {
-                    const imgContainer = document.createElement('div');
-                    imgContainer.style.marginTop = '12px';
-                    imgContainer.style.cursor = 'pointer';
-                    imgContainer.title = 'Click to view full size';
+                    // Generate unique ID for this card
+                    const cardId = cardData.submissionId || `join-${cardData.userId}-${cardData.timestamp}`;
                     
-                    const img = document.createElement('img');
-                    img.style.width = '100%';
-                    img.style.maxHeight = '400px';
-                    img.style.objectFit = 'cover';
-                    img.style.borderRadius = 'var(--radius-lg)';
-                    img.style.border = '1px solid var(--border)';
-                    img.style.transition = 'transform 0.2s';
+                    // Check if this card already exists in the DOM
+                    let existingCard = feedTab.querySelector(`[data-feed-id="${cardId}"]`);
                     
-                    // Load image source (handles both Storage and Database)
-                    loadImageSrc(cardData.imageUrl).then(src => {
-                        if (src) {
-                            img.src = src;
-                            console.log('📷 Image loaded in feed:', cardData.imageUrl);
-                        } else {
-                            console.warn('❌ Failed to load image:', cardData.imageUrl);
-                            imgContainer.innerHTML = '<div style="padding: 20px; text-align: center; background: #f5f5f5; border-radius: 8px; color: #666;">📷 Image could not be loaded</div>';
+                    // If card exists and is a pending submission, update approval counts only
+                    if (existingCard && cardData.status === 'pending' && cardData.submissionData) {
+                        // Update just the approval buttons and counts instead of re-rendering
+                        const approveBtn = existingCard.querySelector('.btn-primary');
+                        const rejectBtn = existingCard.querySelector('.btn-outline[data-reject]');
+                        const approvalSection = existingCard.querySelector('[data-approval-section]');
+                        
+                        if (approveBtn) approveBtn.textContent = `👍 Approve (${cardData.approvals || 0})`;
+                        if (rejectBtn) rejectBtn.textContent = `👎 Reject (${cardData.rejections || 0})`;
+                        if (approvalSection) {
+                            approvalSection.innerHTML = `
+                                <div class="muted" style="font-size: 12px; margin-bottom: 8px;">
+                                    Approvals needed: ${cardData.approvalCount || 0}/${cardData.totalVoters || 0}
+                                </div>
+                            `;
                         }
-                    }).catch(error => {
-                        console.error('❌ Image loading error:', error);
-                        imgContainer.innerHTML = '<div style="padding: 20px; text-align: center; background: #f5f5f5; border-radius: 8px; color: #666;">📷 Image loading failed</div>';
-                    });
-                    
-                    // Click to expand image
-                    imgContainer.addEventListener('click', () => {
-                        const modal = document.createElement('div');
-                        modal.style.cssText = `
-                            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                            background: rgba(0,0,0,0.9); z-index: 1000;
-                            display: flex; align-items: center; justify-content: center;
-                            cursor: pointer;
-                        `;
-                        
-                        const fullImg = document.createElement('img');
-                        fullImg.style.cssText = `
-                            max-width: 90vw; max-height: 90vh;
-                            border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-                        `;
-                        
-                        // Load full size image (handles both Storage and Database)
-                        loadImageSrc(cardData.imageUrl).then(src => {
-                            if (src) fullImg.src = src;
-                        });
-                        
-                        modal.appendChild(fullImg);
-                        modal.addEventListener('click', () => document.body.removeChild(modal));
-                        document.body.appendChild(modal);
-                    });
-                    
-                    // Handle image load errors
-                    img.onerror = () => {
-                        imgContainer.innerHTML = '<div style="padding: 20px; text-align: center; background: #f5f5f5; border-radius: 8px; color: #666;">📷 Image failed to load</div>';
-                        console.warn('Failed to load image:', cardData.imageUrl);
-                    };
-                    
-                    imgContainer.appendChild(img);
-                    card.appendChild(imgContainer);
-                }
-                
-                // Status indicator
-                if (cardData.status === 'approved') {
-                    const statusLabel = document.createElement('div');
-                    statusLabel.className = 'badge';
-                    statusLabel.style.background = 'rgba(0,224,84,0.15)';
-                    statusLabel.style.color = '#00E054';
-                    statusLabel.textContent = '✅ Approved';
-                    card.appendChild(statusLabel);
-                } else if (cardData.status === 'rejected') {
-                    const statusLabel = document.createElement('div');
-                    statusLabel.className = 'badge';
-                    statusLabel.style.background = 'rgba(255,59,48,0.15)';
-                    statusLabel.style.color = '#ff3b30';
-                    statusLabel.textContent = '❌ Rejected';
-                    card.appendChild(statusLabel);
-                }
-
-                // Approval buttons (only for pending submissions and not your own)
-                const currentUserId = app.getCurrentUser()?.uid || user.userId;
-                if (cardData.status === 'pending' && cardData.submissionData && cardData.submissionData.userId !== currentUserId) {
-                    const approvalSection = document.createElement('div');
-                    approvalSection.style.marginTop = '12px';
-                    approvalSection.innerHTML = `
-                        <div class="muted" style="font-size: 12px; margin-bottom: 8px;">
-                            Approvals needed: ${cardData.approvalCount || 0}/${cardData.totalVoters || 0}
-                        </div>
-                    `;
-                    
-                    const buttonContainer = document.createElement('div');
-                    buttonContainer.className = 'between flex';
-                    buttonContainer.style.gap = '8px';
-                    
-                    const approveBtn = document.createElement('button');
-                    approveBtn.className = 'btn btn-primary btn-small';
-                    approveBtn.textContent = `👍 Approve (${cardData.approvals || 0})`;
-                    approveBtn.addEventListener('click', async () => {
-                        await handleApproval(cardData.submissionData, true, cardData.submissionId);
-                    });
-                    
-                    const rejectBtn = document.createElement('button');
-                    rejectBtn.className = 'btn btn-outline btn-small';
-                    rejectBtn.textContent = `👎 Reject (${cardData.rejections || 0})`;
-                    rejectBtn.addEventListener('click', async () => {
-                        await handleApproval(cardData.submissionData, false, cardData.submissionId);
-                    });
-                    
-                    buttonContainer.appendChild(approveBtn);
-                    buttonContainer.appendChild(rejectBtn);
-                    approvalSection.appendChild(buttonContainer);
-                    card.appendChild(approvalSection);
-                } else if (cardData.submissionData && cardData.submissionData.userId === currentUserId) {
-                    // Show status for own submissions
-                    const statusInfo = document.createElement('div');
-                    statusInfo.className = 'muted';
-                    statusInfo.style.fontSize = '12px';
-                    statusInfo.style.marginTop = '8px';
-                    
-                    if (cardData.status === 'pending') {
-                        statusInfo.textContent = `Waiting for approval: ${cardData.approvals || 0}/${cardData.totalVoters || 0} votes`;
-                    } else if (cardData.status === 'approved') {
-                        statusInfo.textContent = `Approved! You earned ${cardData.submissionData.task?.points || 0} points.`;
-                    } else if (cardData.status === 'rejected') {
-                        statusInfo.textContent = 'Rejected. You can try uploading again.';
+                        return; // Skip rendering this one
                     }
                     
-                    card.appendChild(statusInfo);
-                }
+                    // If card exists but status changed (e.g., pending -> approved), replace it
+                    if (existingCard && cardData.submissionData && cardData.status !== 'pending') {
+                        feedTab.removeChild(existingCard);
+                        existingCard = null;
+                    }
+                    
+                    // If card doesn't exist, create it
+                    if (!existingCard) {
+                        const card = document.createElement('div');
+                        card.className = 'card stack';
+                        card.setAttribute('data-feed-id', cardId);
+                        
+                        // Different styling based on submission status
+                        if (cardData.status === 'approved') {
+                            card.style.border = '1px solid #00E054';
+                        } else if (cardData.status === 'rejected') {
+                            card.style.border = '1px solid #ff3b30';
+                        } else {
+                            card.style.border = '1px solid var(--border)';
+                        }
 
-                feedTab.appendChild(card);
-            });
+                        const header = document.createElement('div');
+                        header.className = 'between flex';
+                        header.innerHTML = `
+                            <div>
+                                <div style="font-weight:700;">${cardData.user}</div>
+                                <div class="muted">${cardData.time}</div>
+                            </div>
+                            <div class="badge ${cardData.status === 'approved' ? 'badge-success' : cardData.status === 'rejected' ? 'badge-danger' : ''}">${cardData.badge}</div>
+                        `;
+                        card.appendChild(header);
+
+                        const title = document.createElement('div');
+                        title.style.fontWeight = '700';
+                        title.textContent = cardData.text;
+                        card.appendChild(title);
+                        
+                        // Add image if available (larger and more prominent)
+                        if (cardData.imageUrl) {
+                            const imgContainer = document.createElement('div');
+                            imgContainer.style.marginTop = '12px';
+                            imgContainer.style.cursor = 'pointer';
+                            imgContainer.title = 'Click to view full size';
+                            
+                            const img = document.createElement('img');
+                            img.style.width = '100%';
+                            img.style.maxHeight = '400px';
+                            img.style.objectFit = 'cover';
+                            img.style.borderRadius = 'var(--radius-lg)';
+                            img.style.border = '1px solid var(--border)';
+                            img.style.transition = 'transform 0.2s';
+                            
+                            // Load image source (handles both Storage and Database)
+                            loadImageSrc(cardData.imageUrl).then(src => {
+                                if (src) {
+                                    img.src = src;
+                                    console.log('📷 Image loaded in feed:', cardData.imageUrl);
+                                } else {
+                                    console.warn('❌ Failed to load image:', cardData.imageUrl);
+                                    imgContainer.innerHTML = '<div style="padding: 20px; text-align: center; background: #f5f5f5; border-radius: 8px; color: #666;">📷 Image could not be loaded</div>';
+                                }
+                            }).catch(error => {
+                                console.error('❌ Image loading error:', error);
+                                imgContainer.innerHTML = '<div style="padding: 20px; text-align: center; background: #f5f5f5; border-radius: 8px; color: #666;">📷 Image loading failed</div>';
+                            });
+                            
+                            // Click to expand image
+                            imgContainer.addEventListener('click', () => {
+                                const modal = document.createElement('div');
+                                modal.style.cssText = `
+                                    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                                    background: rgba(0,0,0,0.9); z-index: 1000;
+                                    display: flex; align-items: center; justify-content: center;
+                                    cursor: pointer;
+                                `;
+                                
+                                const fullImg = document.createElement('img');
+                                fullImg.style.cssText = `
+                                    max-width: 90vw; max-height: 90vh;
+                                    border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+                                `;
+                                
+                                // Load full size image (handles both Storage and Database)
+                                loadImageSrc(cardData.imageUrl).then(src => {
+                                    if (src) fullImg.src = src;
+                                });
+                                
+                                modal.appendChild(fullImg);
+                                modal.addEventListener('click', () => document.body.removeChild(modal));
+                                document.body.appendChild(modal);
+                            });
+                            
+                            // Handle image load errors
+                            img.onerror = () => {
+                                imgContainer.innerHTML = '<div style="padding: 20px; text-align: center; background: #f5f5f5; border-radius: 8px; color: #666;">📷 Image failed to load</div>';
+                                console.warn('Failed to load image:', cardData.imageUrl);
+                            };
+                            
+                            imgContainer.appendChild(img);
+                            card.appendChild(imgContainer);
+                        }
+                        
+                        // Status indicator
+                        if (cardData.status === 'approved') {
+                            const statusLabel = document.createElement('div');
+                            statusLabel.className = 'badge';
+                            statusLabel.style.background = 'rgba(0,224,84,0.15)';
+                            statusLabel.style.color = '#00E054';
+                            statusLabel.textContent = '✅ Approved';
+                            card.appendChild(statusLabel);
+                        } else if (cardData.status === 'rejected') {
+                            const statusLabel = document.createElement('div');
+                            statusLabel.className = 'badge';
+                            statusLabel.style.background = 'rgba(255,59,48,0.15)';
+                            statusLabel.style.color = '#ff3b30';
+                            statusLabel.textContent = '❌ Rejected';
+                            card.appendChild(statusLabel);
+                        }
+
+                        // Approval buttons (only for pending submissions and not your own)
+                        const currentUserId = app.getCurrentUser()?.uid || user.userId;
+                        if (cardData.status === 'pending' && cardData.submissionData && cardData.submissionData.userId !== currentUserId) {
+                            const approvalSection = document.createElement('div');
+                            approvalSection.style.marginTop = '12px';
+                            approvalSection.setAttribute('data-approval-section', 'true');
+                            approvalSection.innerHTML = `
+                                <div class="muted" style="font-size: 12px; margin-bottom: 8px;">
+                                    Approvals needed: ${cardData.approvalCount || 0}/${cardData.totalVoters || 0}
+                                </div>
+                            `;
+                            
+                            const buttonContainer = document.createElement('div');
+                            buttonContainer.className = 'between flex';
+                            buttonContainer.style.gap = '8px';
+                            
+                            const approveBtn = document.createElement('button');
+                            approveBtn.className = 'btn btn-primary btn-small';
+                            approveBtn.textContent = `👍 Approve (${cardData.approvals || 0})`;
+                            approveBtn.addEventListener('click', async () => {
+                                await handleApproval(cardData.submissionData, true, cardData.submissionId);
+                            });
+                            
+                            const rejectBtn = document.createElement('button');
+                            rejectBtn.className = 'btn btn-outline btn-small';
+                            rejectBtn.setAttribute('data-reject', 'true');
+                            rejectBtn.textContent = `👎 Reject (${cardData.rejections || 0})`;
+                            rejectBtn.addEventListener('click', async () => {
+                                await handleApproval(cardData.submissionData, false, cardData.submissionId);
+                            });
+                            
+                            buttonContainer.appendChild(approveBtn);
+                            buttonContainer.appendChild(rejectBtn);
+                            approvalSection.appendChild(buttonContainer);
+                            card.appendChild(approvalSection);
+                        } else if (cardData.submissionData && cardData.submissionData.userId === currentUserId) {
+                            // Show status for own submissions
+                            const statusInfo = document.createElement('div');
+                            statusInfo.className = 'muted';
+                            statusInfo.style.fontSize = '12px';
+                            statusInfo.style.marginTop = '8px';
+                            
+                            if (cardData.status === 'pending') {
+                                statusInfo.textContent = `Waiting for approval: ${cardData.approvals || 0}/${cardData.totalVoters || 0} votes`;
+                            } else if (cardData.status === 'approved') {
+                                if (mode === 'oneday') {
+                                    statusInfo.textContent = '✅ Great job! You completed this task.';
+                                } else {
+                                    statusInfo.textContent = `Approved! You earned ${cardData.submissionData.task?.points || 0} points.`;
+                                }
+                            } else if (cardData.status === 'rejected') {
+                                statusInfo.textContent = 'Rejected. You can try uploading again.';
+                            }
+                            
+                            card.appendChild(statusInfo);
+                        }
+
+                        feedTab.appendChild(card);
+                    }
+                });
         };
 
         // --- Ranking Tab ---
@@ -1492,30 +1699,63 @@
                 });
 
             const sorted = participants.slice().map(p => {
-                // Calculate actual points from approved submissions using task points
-                const userSubmissions = Object.values(roomData.submissions || {}).filter(s => 
-                    s.userId === p.userId && s.status === 'approved'
-                );
-                // Use actual task points, not hardcoded 10
-                const calculatedPoints = userSubmissions.reduce((total, sub) => {
-                    return total + (sub.task?.points || 10); // fallback to 10 if no task points
-                }, 0);
-                
-                console.log(`📊 Ranking calculation for ${p.nickname}:`, {
-                    userId: p.userId,
-                    totalSubmissions: Object.values(roomData.submissions || {}).filter(s => s.userId === p.userId).length,
-                    approvedSubmissions: userSubmissions.length,
-                    calculatedPoints,
-                    storedScore: p.score || 0,
-                    submissionPoints: userSubmissions.map(s => ({ taskPoints: s.task?.points || 10, taskLabel: s.task?.label || 'Unknown' })),
-                    submissionIds: userSubmissions.map(s => s.id || 'no-id')
-                });
-                
-                return { ...p, points: calculatedPoints, submissionCount: userSubmissions.length };
+                if (mode === 'routine') {
+                    // Calculate actual points from approved submissions using task points
+                    const userSubmissions = Object.values(roomData.submissions || {}).filter(s => 
+                        s.userId === p.userId && s.status === 'approved'
+                    );
+                    // Use actual task points, not hardcoded 10
+                    const calculatedPoints = userSubmissions.reduce((total, sub) => {
+                        return total + (sub.task?.points || 10); // fallback to 10 if no task points
+                    }, 0);
+                    
+                    console.log(`📊 Ranking calculation for ${p.nickname}:`, {
+                        userId: p.userId,
+                        totalSubmissions: Object.values(roomData.submissions || {}).filter(s => s.userId === p.userId).length,
+                        approvedSubmissions: userSubmissions.length,
+                        calculatedPoints,
+                        storedScore: p.score || 0,
+                        submissionPoints: userSubmissions.map(s => ({ taskPoints: s.task?.points || 10, taskLabel: s.task?.label || 'Unknown' })),
+                        submissionIds: userSubmissions.map(s => s.id || 'no-id')
+                    });
+                    
+                    return { ...p, points: calculatedPoints, submissionCount: userSubmissions.length };
+                } else {
+                    // For oneday mode, calculate percentage of tasks completed using the deadline date
+                    const getOneDayReferenceDate = () => {
+                        if (mode === 'oneday' && roomData.dday) {
+                            const ddayDate = new Date(roomData.dday);
+                            return ddayDate.toDateString();
+                        }
+                        return new Date().toDateString();
+                    };
+                    const oneDayReferenceDate = getOneDayReferenceDate();
+                    
+                    const userSubmissions = Object.values(roomData.submissions || {}).filter(s => 
+                        s.userId === p.userId && 
+                        s.status === 'approved' &&
+                        new Date(s.submittedAt).toDateString() === oneDayReferenceDate
+                    );
+                    
+                    // Count tasks completed (each submission is one task)
+                    const tasksCompleted = userSubmissions.length;
+                    const totalTasks = oneDayState?.tasks?.length || 0;
+                    const percentage = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
+                    
+                    console.log(`📊 Oneday ranking for ${p.nickname}:`, {
+                        userId: p.userId,
+                        tasksCompleted,
+                        totalTasks,
+                        percentage: Math.round(percentage),
+                        approvedOnDeadlineDate: userSubmissions.length,
+                        referenceDate: oneDayReferenceDate
+                    });
+                    
+                    return { ...p, rate: percentage / 100, remaining: totalTasks - tasksCompleted, tasksCompleted };
+                }
             }).sort((a,b) => {
                 if (mode === 'routine') return b.points - a.points; // Use calculated points instead of stored score
-                if (b.rate === a.rate) return 0;
-                return b.rate - a.rate;
+                return (b.rate || 0) - (a.rate || 0);
             });
 
             sorted.forEach((row, idx) => {
@@ -1585,13 +1825,18 @@
                 await loadFirebaseData();
                 
                 // Then render UI with fresh data
+                console.log('🎬 Initialize called with mode:', mode);
+                console.log('Goals available:', goals);
                 if (mode === 'routine') {
+                    console.log('📊 Calling renderRoutineMission');
                     renderRoutineMission();
                 } else {
+                    console.log('📋 Calling renderOneDayMission');
                     renderOneDayMission();
                 }
-                        renderFeed();
-                        renderRanking();                console.log('🚀 Room initialized with Firebase data');
+                renderFeed();
+                renderRanking();
+                console.log('🚀 Room initialized with Firebase data');
             };
             
             // Start initialization
@@ -1653,8 +1898,9 @@
             // Add performance logging
             console.log('🚀 Room setup complete, checking Firebase performance...');
             
-            // Handle result button display
+            // Handle result button display and competition ended banner
             const resultContainer = document.getElementById('resultButtonContainer');
+            const competitionEndedBanner = document.getElementById('competitionEndedBanner');
             if (resultContainer) {
                 const isCompetitionEnded = (() => {
                     // Check if competition was manually ended
@@ -1684,9 +1930,10 @@
                 })();
                 
                 if (isCompetitionEnded) {
-                    resultContainer.innerHTML = '<button class="btn btn-primary btn-small" type="button" onclick="window.location.href=\'result.html\'">🏆 View Results</button>';
-                } else {
-                    resultContainer.innerHTML = '<div class="muted" style="font-size: 12px;">Results available when competition ends</div>';
+                    resultContainer.style.display = 'block';
+                    if (competitionEndedBanner) {
+                        competitionEndedBanner.style.display = 'block';
+                    }
                 }
             }
             
