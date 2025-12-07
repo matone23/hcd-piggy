@@ -10,11 +10,20 @@
     <main class="page">
         <header class="between flex">
             <div>
-                <div class="muted">Welcome back</div>
-                <div id="greeting" style="font-weight: 800; font-size: 22px;">Loading...</div>
+                <div id="greeting" style="font-weight: 800; font-size: 22px;"></div>
             </div>
             <button class="btn btn-outline btn-small" id="logoutBtn">Logout</button>
         </header>
+
+        <!-- Loading overlay - shown while data loads -->
+        <div id="lobbyLoadingOverlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #0f1115; z-index: 9999; display: flex; align-items: center; justify-content: center;">
+            <div class="card stack" style="text-align: center; max-width: 300px;">
+                <div class="muted">Loading lobby...</div>
+                <div style="padding: 20px;">
+                    <div style="font-size: 32px; animation: spin 1s linear infinite;">🐷</div>
+                </div>
+            </div>
+        </div>
 
         <section class="stack mt-24" id="lobbyContent">
             <div id="oldCompetitionsSection" style="display: none;">
@@ -52,7 +61,13 @@
     </main>
 
     <div id="toast" role="status" aria-live="polite"></div>
-    
+
+    <style>
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js';
@@ -332,6 +347,12 @@
             if (greeting && user?.nickname) {
                 const firebaseStatus = app.isFirebaseReady() ? '🔥' : '📱';
                 greeting.textContent = `Hi, ${user.nickname} ${firebaseStatus}`;
+            }
+
+            // Hide loading overlay after everything is loaded
+            const loadingOverlay = document.getElementById('lobbyLoadingOverlay');
+            if (loadingOverlay) {
+                loadingOverlay.style.display = 'none';
             }
 
             createBtn?.addEventListener('click', async () => {

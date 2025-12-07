@@ -10,21 +10,31 @@
     <header id="roomHeader" style="padding: 20px; color: #0b1b0f; background: linear-gradient(135deg, #00E054, #00b045);">
         <div class="between flex">
             <div>
-                <div id="roomTitle" style="font-weight: 800; font-size: 22px;">Piggy Room</div>
+                <div id="roomTitle" style="font-weight: 800; font-size: 22px;"></div>
             </div>
             <div class="flex" style="gap: 8px;">
                 <button class="btn btn-outline btn-small" style="background: rgba(0,0,0,0.12); color:#0b1b0f; border-color: rgba(255,255,255,0.25);" onclick="window.location.href='lobby.html'">Lobby</button>
             </div>
         </div>
-        <div id="leaderBanner" class="pill mt-8" style="background: rgba(0,0,0,0.15); color:#0b1b0f;">Getting ready...</div>
+        <div id="leaderBanner" class="pill mt-8" style="background: rgba(0,0,0,0.15); color:#0b1b0f;"></div>
     </header>
+
+    <!-- Loading overlay - shown while Firebase data loads -->
+    <div id="roomLoadingOverlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #0f1115; z-index: 9999; display: flex; align-items: center; justify-content: center;">
+        <div class="card stack" style="text-align: center; max-width: 300px;">
+            <div class="muted">Loading room...</div>
+            <div style="padding: 20px;">
+                <div style="font-size: 32px; animation: spin 1s linear infinite;">🐷</div>
+            </div>
+        </div>
+    </div>
 
     <main class="page" style="padding-top:16px;">
         <!-- Room Code Section -->
         <div class="card" style="margin-bottom: 12px; padding: 12px; background: #f8f9fa; border: 1px solid #dee2e6;">
             <div style="text-align: center;">
                 <div style="font-size: 12px; color: #6c757d; margin-bottom: 4px;">Room Code</div>
-                <div id="roomCodeDisplay" style="font-size: 18px; font-weight: 700; letter-spacing: 2px; margin-bottom: 8px; color: #495057;">LOADING...</div>
+                <div id="roomCodeDisplay" style="font-size: 18px; font-weight: 700; letter-spacing: 2px; margin-bottom: 8px; color: #495057;"></div>
                 <div style="display: flex; gap: 6px; justify-content: center;">
                     <button id="copyRoomCodeBtn" class="btn btn-primary btn-small" style="font-size: 12px; padding: 6px 12px;">
                         📋 Copy
@@ -64,6 +74,12 @@
 
     <div id="toast" role="status" aria-live="polite"></div>
     <input id="fileCapture" type="file" accept="image/*" capture="environment" style="display:none;">
+
+    <style>
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
 
     <!-- Firebase SDK -->
     <script type="module">
@@ -1497,7 +1513,10 @@
                 // Only rebuild cards that don't already exist in the DOM
                 // This prevents image reloading for existing cards
                 feedData.forEach((cardData) => {
-                    const cardId = cardData.submissionId || `join-${cardData.userId}-${cardData.timestamp}`;
+                    // Use stable IDs: for join events use userId, for submissions use submissionId
+                    const cardId = cardData.isJoinEvent 
+                        ? `join-${cardData.userId}` 
+                        : (cardData.submissionId || `submission-${cardData.userId}-${cardData.timestamp}`);
                     
                     // Check if card already exists
                     let existingCard = feedTab.querySelector(`[data-feed-id="${cardId}"]`);
@@ -1951,6 +1970,12 @@
                 renderFeed();
                 renderRanking();
                 console.log('🚀 Room initialized with Firebase data');
+                
+                // Hide loading overlay after everything is loaded
+                const loadingOverlay = document.getElementById('roomLoadingOverlay');
+                if (loadingOverlay) {
+                    loadingOverlay.style.display = 'none';
+                }
             };
             
             // Start initialization
@@ -2097,7 +2122,8 @@
                                     winner: leader ? {
                                         nickname: leader.nickname,
                                         userId: leader.userId,
-                                        points: mode === 'oneday' ? Math.round(leader.calculatedScore) : leader.calculatedScore
+                                        points: mode === 'oneday' ? Math.round(leader.calculatedScore) : leader.calculatedScore,
+                                        color: leader.color
                                     } : null
                                 };
                                 
