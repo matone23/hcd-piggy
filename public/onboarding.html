@@ -104,17 +104,12 @@
     
     <script type="module">
         document.addEventListener('DOMContentLoaded', async () => {
-            console.log('Onboarding page DOM loaded');
-            
             // Load app module
             let app;
             try {
                 const appModule = await import('./js/app.js');
                 app = appModule.default;
-                
-                // Initialize Firebase
                 await app.initializeFirebase();
-                console.log('Firebase ready in onboarding:', app.isFirebaseReady());
             } catch (error) {
                 console.error('Failed to load app module:', error);
                 return;
@@ -179,8 +174,6 @@
             const timeChips = document.querySelectorAll('#timeChips .chip');
             const customChip = document.getElementById('customChip');
 
-            console.log('Elements found:', { colorGrid, routineSection, onedaySection, finishBtn });
-
             const colors = ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#007AFF', '#AF52DE', '#FFFFFF'];
             let selectedColor = null;
             let todos = [];
@@ -188,7 +181,6 @@
 
             const renderColors = () => {
                 if (!colorGrid) return;
-                console.log('Rendering colors, selectedColor:', selectedColor, 'takenColors:', takenColors);
                 colorGrid.innerHTML = '';
                 colors.forEach((color, index) => {
                     const swatch = document.createElement('div');
@@ -197,11 +189,9 @@
                     swatch.dataset.color = color;
                     
                     const isTaken = takenColors.includes(color);
-                    console.log(`Color ${color} (${index}): taken=${isTaken}, selected=${color === selectedColor}`);
                     
                     if (color === selectedColor) {
                         swatch.classList.add('active');
-                        console.log('Added active class to', color);
                     }
                     
                     if (isTaken) {
@@ -209,14 +199,11 @@
                         swatch.innerHTML = '<div class="swatch-icon">✕</div>';
                         swatch.style.cursor = 'not-allowed';
                         swatch.title = 'This color is already taken';
-                        // DO NOT add click listener for taken colors
                     } else {
                         swatch.addEventListener('click', (e) => {
-                            console.log('Color clicked:', color);
                             e.preventDefault();
                             e.stopPropagation();
                             selectedColor = color;
-                            console.log('Selected color set to:', selectedColor);
                             renderColors();
                             validate();
                         });
@@ -224,7 +211,6 @@
                     }
                     colorGrid.appendChild(swatch);
                 });
-                console.log('Colors rendered, grid children:', colorGrid.children.length);
             };
 
             const setActiveChip = (chip) => {
@@ -492,7 +478,7 @@
                     setTimeout(() => {
                         console.log('✅ Redirecting to room.html after onboarding completion');
                         window.location.href = 'room.html';
-                    }, 1500); // Increased from 500ms to 1500ms
+                    }, 1500);
                 } catch (error) {
                     console.error('Error saving pledge:', error);
                     app.showToast('Failed to save pledge. Please try again.');
@@ -503,7 +489,6 @@
             });
 
             validate();
-            console.log('Onboarding page initialized successfully');
         });
     </script>
 </body>
