@@ -267,10 +267,10 @@
                     window.location.href = 'result.html';
                 });
                 
-                // Clear active room to allow new creations/joins
-                app.clearActiveRoom();
+                // Don't clear active room yet - keep it to show after reload
+                // Only clear when user explicitly creates/joins a new room
                 
-                // Create and show new room cards
+                // Enable creating/joining new rooms
                 createRoomCard.style.opacity = '1';
                 createRoomCard.style.pointerEvents = 'auto';
                 joinRoomCard.style.opacity = '1';

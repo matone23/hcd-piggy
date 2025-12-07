@@ -164,49 +164,36 @@
 
             const user = app.requireUser();
             let roomData = JSON.parse(localStorage.getItem('piggy-habit-room') || '{}');
-            window.roomData = roomData; // Make sure window.roomData is always available
+            window.roomData = roomData;
             
             if (!roomData || Object.keys(roomData).length === 0) {
-                console.log('No room data found, redirecting to lobby');
                 window.location.href = 'lobby.html';
                 return;
             }
 
-            // Show UI immediately with cached data for faster perceived performance
             const roomName = roomData.name || 'Competition Room';
-            const mode = roomData.mode || 'routine';
+            const mode = roomData.mode;
             const color = roomData.color || '#00E054';
+            const today = new Date().toDateString();
             
-            console.log('🔍 ROOM DATA LOADED:', {
-                roomDataFull: roomData,
-                mode: mode,
-                name: roomName,
-                hasMode: 'mode' in roomData,
-                roomDataMode: roomData.mode
-            });
-            
-            // Set basic UI elements immediately
             document.title = `Piggy Habit | ${roomName}`;
             
-            // Initialize UI with cached data first
-            let participants = [];
+            let participants = roomData.participants ? Object.values(roomData.participants) : [];
             
-            // Load room participants from cached data for initial UI
-            if (roomData && roomData.participants) {
-                participants = Object.values(roomData.participants);
-                console.log('📋 Initial participants loaded from cache:', participants.map(p => ({
-                    userId: p.userId, 
-                    nickname: p.nickname
-                })));
-            } else {
-                console.warn('⚠️ No participants found in cached room data');
-            }
+            // Helper to find current user consistently
+            const findCurrentUser = (participantsList) => {
+                const firebaseUid = app.getCurrentUser()?.uid;
+                const cachedUserId = user.userId;
+                const nickname = user.nickname;
+                
+                return participantsList.find(p => 
+                    p.userId === firebaseUid || 
+                    p.userId === cachedUserId || 
+                    p.nickname === nickname
+                );
+            };
             
-            // Variables for calculations
-            const today = new Date().toDateString();
-            const currentUserId = app?.getCurrentUser()?.uid || user?.userId;
-            
-            // Check onboarding status - load fresh data from Firebase to avoid loop
+            // Check onboarding status
             let hasCompletedOnboarding = false;
             
             try {
@@ -215,72 +202,15 @@
                     console.log('🔍 Loading fresh Firebase data for onboarding check...');
                     const freshRoomData = await app.getRoom(roomData.id);
                     
-                    if (freshRoomData && freshRoomData.participants) {
+                    if (freshRoomData?.participants) {
                         const freshParticipants = Object.values(freshRoomData.participants);
-                        const cachedUser = app.getUser();
-                        const firebaseUserId = app?.getCurrentUser()?.uid;
-                        const cachedUserId = cachedUser?.userId;
-                        const nickname = cachedUser?.nickname;
+                        const userParticipant = findCurrentUser(freshParticipants);
                         
-                        console.log('🔍 User identification for onboarding check:', {
-                            firebaseUserId,
-                            cachedUserId,
-                            nickname,
-                            allParticipants: freshParticipants.map(p => ({
-                                userId: p.userId,
-                                nickname: p.nickname,
-                                hasGoals: !!p.goals,
-                                hasColor: !!p.color,
-                                onboardingComplete: p.onboardingComplete
-                            }))
-                        });
-                        
-                        // Try multiple matching strategies
-                        let userParticipant = null;
-                        
-                        // Strategy 1: Match by Firebase UID
-                        if (firebaseUserId) {
-                            userParticipant = freshParticipants.find(p => p.userId === firebaseUserId);
-                            if (userParticipant) {
-                                console.log('✅ Found user by Firebase UID:', userParticipant.nickname);
-                            }
-                        }
-                        
-                        // Strategy 2: Match by cached user ID
-                        if (!userParticipant && cachedUserId) {
-                            userParticipant = freshParticipants.find(p => p.userId === cachedUserId);
-                            if (userParticipant) {
-                                console.log('✅ Found user by cached user ID:', userParticipant.nickname);
-                            }
-                        }
-                        
-                        // Strategy 3: Match by nickname as fallback
-                        if (!userParticipant && nickname) {
-                            userParticipant = freshParticipants.find(p => p.nickname === nickname);
-                            if (userParticipant) {
-                                console.log('✅ Found user by nickname:', userParticipant.nickname);
-                            }
-                        }
-                        
-                        console.log('🔍 Detailed onboarding check for user:', {
-                            userFound: !!userParticipant,
-                            userParticipant: userParticipant ? {
-                                userId: userParticipant.userId,
-                                nickname: userParticipant.nickname,
-                                hasGoals: !!userParticipant.goals,
-                                goalsLength: userParticipant.goals ? userParticipant.goals.length : 0,
-                                hasColor: !!userParticipant.color,
-                                colorValue: userParticipant.color,
-                                onboardingComplete: userParticipant.onboardingComplete,
-                                allFields: Object.keys(userParticipant || {})
-                            } : 'USER NOT FOUND'
-                        });
-                        
-                        hasCompletedOnboarding = userParticipant && 
-                                               userParticipant.goals && 
-                                               userParticipant.goals.length > 0 && 
-                                               userParticipant.color && 
-                                               userParticipant.onboardingComplete === true;
+                        hasCompletedOnboarding = !!(
+                            userParticipant?.goals?.length > 0 && 
+                            userParticipant?.color && 
+                            userParticipant?.onboardingComplete
+                        );
                                                
                         // Update local data with fresh data
                         if (freshRoomData) {
