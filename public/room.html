@@ -47,10 +47,7 @@
         </div>
 
         <div id="competitionEndedBanner" class="card" style="margin-bottom: 12px; text-align: center; background: #ffe4e1; border: 1px solid #ffb3a7; display: none;">
-            <div style="font-weight: 700; color: #c41e3a; font-size: 16px;">⏰ Competition Has Ended</div>
-        </div>
-
-        <div id="resultButtonContainer" class="card" style="margin-bottom: 12px; text-align: center; display: none;">
+            <div style="font-weight: 700; color: #c41e3a; font-size: 16px; margin-bottom: 12px;">⏰ Competition Has Ended</div>
             <button class="btn btn-primary" type="button" onclick="window.location.href='result.html'" style="width: 100%;">🏆 View Results</button>
         </div>
 
@@ -415,40 +412,50 @@
                             submissions: Object.keys(updatedRoomData.submissions || {}).length
                         });
                         
-                        // Always update participants and check for changes
+                        // Store old data for comparison BEFORE updating
+                        const oldSubmissionData = JSON.stringify(roomData.submissions || {});
+                        const oldParticipants = participants.slice();
+                        
+                        // Update roomData FIRST so that subsequent function calls use fresh data
+                        roomData = { ...roomData, ...updatedRoomData };
+                        
+                        // Check for submission changes
+                        if (updatedRoomData.submissions) {
+                            const newSubmissionData = JSON.stringify(updatedRoomData.submissions);
+                            if (newSubmissionData !== oldSubmissionData) {
+                                console.log('📝 Submissions changed, updating feed and rankings');
+                                if (typeof updateFeed === 'function') updateFeed();
+                                if (typeof refreshRanking === 'function') refreshRanking();
+                            }
+                        }
+                        
+                        // Check for participant changes
                         if (updatedRoomData.participants) {
                             const newParticipants = Object.values(updatedRoomData.participants);
-                            const participantsChanged = newParticipants.length !== participants.length || 
+                            const participantsChanged = newParticipants.length !== oldParticipants.length || 
                                 JSON.stringify(newParticipants.map(p => ({id: p.userId, nickname: p.nickname}))) !== 
-                                JSON.stringify(participants.map(p => ({id: p.userId, nickname: p.nickname})));
+                                JSON.stringify(oldParticipants.map(p => ({id: p.userId, nickname: p.nickname})));
                             
                             if (participantsChanged) {
                                 console.log('👥 Participants changed via real-time update:', {
-                                    oldCount: participants.length,
+                                    oldCount: oldParticipants.length,
                                     newCount: newParticipants.length,
-                                    oldParticipants: participants.map(p => p.nickname),
+                                    oldParticipants: oldParticipants.map(p => p.nickname),
                                     newParticipants: newParticipants.map(p => p.nickname)
                                 });
                                 
                                 participants = newParticipants;
                                 if (typeof updateParticipantCount === 'function') updateParticipantCount();
                                 if (typeof refreshRanking === 'function') refreshRanking();
-                                if (typeof updateFeed === 'function') updateFeed(); // Also update feed when participants change
-                            }
-                        }
-                        
-                        // Always check for submission changes (including status updates)
-                        if (updatedRoomData.submissions) {
-                            const newSubmissionData = JSON.stringify(updatedRoomData.submissions);
-                            const oldSubmissionData = JSON.stringify(roomData.submissions || {});
-                            if (newSubmissionData !== oldSubmissionData) {
-                                console.log('📝 Submissions changed, updating feed and rankings');
                                 if (typeof updateFeed === 'function') updateFeed();
-                                if (typeof refreshRanking === 'function') refreshRanking(); // Rankings might change due to approved submissions
                             }
                         }
                         
-                        roomData = { ...roomData, ...updatedRoomData };
+                        // Check if competition was ended and show banner
+                        const competitionEndedBanner = document.getElementById('competitionEndedBanner');
+                        if (competitionEndedBanner && updatedRoomData.manuallyEnded) {
+                            competitionEndedBanner.style.display = 'block';
+                        }
                     });
                 }
             };
@@ -473,7 +480,7 @@
                         } else if (leader) {
                             leaderBanner.textContent = iAmLeader
                                 ? 'You are leading! Keep the pace!'
-                                : `👑 ${leader.nickname} is leading with ${leader.calculatedPoints || 0} pts!`;
+                                : `👑 ${leader.nickname} is leading with ${leader.calculatedScore || 0} pts!`;
                         } else {
                             leaderBanner.textContent = `${participants.length} participants in room`;
                         }
@@ -2006,9 +2013,8 @@
             console.log('🚀 Room setup complete, checking Firebase performance...');
             
             // Handle result button display and competition ended banner
-            const resultContainer = document.getElementById('resultButtonContainer');
             const competitionEndedBanner = document.getElementById('competitionEndedBanner');
-            if (resultContainer) {
+            if (competitionEndedBanner) {
                 const isCompetitionEnded = (() => {
                     // Check if competition was manually ended
                     if (roomData.manuallyEnded) {
@@ -2037,10 +2043,7 @@
                 })();
                 
                 if (isCompetitionEnded) {
-                    resultContainer.style.display = 'block';
-                    if (competitionEndedBanner) {
-                        competitionEndedBanner.style.display = 'block';
-                    }
+                    competitionEndedBanner.style.display = 'block';
                 }
             }
             
