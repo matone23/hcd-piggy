@@ -13,7 +13,6 @@
     <main class="page">
         <header class="between flex">
             <div>
-                <div class="muted">Verification</div>
                 <div style="font-weight:800; font-size:22px;">Upload proof</div>
             </div>
             <button class="btn btn-outline btn-small" onclick="window.location.href='room.html'">Back</button>
@@ -205,26 +204,22 @@
                     if (previewImg) {
                         previewImg.src = ev.target.result;
                         previewImg.onload = () => {
-
                             if (previewWrap) {
                                 previewWrap.style.display = 'flex';
                             }
                         };
                         previewImg.onerror = () => {
-
                             app.showToast('Failed to preview image. You can still try to upload.');
                         };
                     }
                 };
-                reader.onerror = (error) => {
-
+                reader.onerror = () => {
                     app.showToast('Failed to read image file. Please try a different photo.');
                 };
                 reader.readAsDataURL(file);
             }
 
             nextBtn?.addEventListener('click', async () => {
-
                 if (!previewImg?.src) {
                     app.showToast('Please attach a photo.');
                     return;
@@ -242,23 +237,18 @@
                     // Get consistent user ID (Firebase UID if available, otherwise localStorage ID)
                     const currentUser = app.getCurrentUser();
                     const userId = currentUser?.uid || user.userId;
-
                     
                     const firebaseStatus = app.isFirebaseReady();
-
                     
                     if (!firebaseStatus || !firebaseStatus.isReady || !proof.roomId) {
-
                         app.showToast('Cannot submit: Please refresh and try again.');
                         return;
                     }
                     
-                    // Upload image using Firebase Database (no Storage costs!)
+                    // Upload and compress image for Firebase Database storage
                     let imageUrl = '';
-
                     
                     try {
-
                         nextBtn.textContent = 'Compressing image...';
                         
                         // Compress image for database storage
@@ -290,15 +280,12 @@
                         // Convert to base64 with good compression
                         const base64 = canvas.toDataURL('image/jpeg', 0.75);
                         
-
-                        
                         nextBtn.textContent = 'Uploading to database...';
                         
                         // Store in Firebase Database
                         const timestamp = Date.now();
                         const imageId = `${userId}_${timestamp}`;
                         
-                        // Use the v9 Firebase Database syntax
                         const { ref, set, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js');
                         const imageRef = ref(window.firebaseDatabase, `tempImages/${imageId}`);
                         
@@ -309,28 +296,25 @@
                             userId: userId
                         });
                         
-                        imageUrl = `database:${imageId}`; // Special prefix to indicate database storage
-
+                        imageUrl = `database:${imageId}`;
                         
                     } catch (uploadError) {
-
                         app.showToast(`Failed to upload image: ${uploadError.message}`);
                         return;
                     }
                     
                     if (!imageUrl) {
-                        app.showToast('Failed to upload image after multiple attempts. Please try again.');
+                        app.showToast('Failed to upload image. Please try again.');
                         return;
                     }
                     
-                    // Save submission metadata to Firebase Database (much smaller now)
+                    // Save submission metadata to Firebase
                     try {
-
                         nextBtn.textContent = 'Saving submission...';
                         
                         const submissionData = {
                             ...proof,
-                            imageUrl: imageUrl, // Store URL instead of base64 data
+                            imageUrl: imageUrl,
                             submittedAt: Date.now(),
                             submittedBy: user.nickname,
                             userId: userId,
@@ -344,12 +328,9 @@
                             [`submissions/${submissionId}`]: submissionData
                         };
                         
-
                         await app.updateRoom(proof.roomId, updateData);
-
                         
                     } catch (firebaseError) {
-
                         app.showToast(`Firebase error: ${firebaseError.message}`);
                         return;
                     }
@@ -357,34 +338,11 @@
                     // Clean up
                     localStorage.removeItem('piggy-habit-proof');
                     localStorage.removeItem('piggy-habit-proof-done');
-                    localStorage.removeItem('piggy-habit-proof-img'); // Clean up any old image data
                     window.selectedFile = null;
                     
-                    // Clear any cached redirects or state that might interfere
-                    sessionStorage.removeItem('lastPage');
-                    sessionStorage.removeItem('redirectAfterUpload');
-                    localStorage.removeItem('pendingRedirect');
-                    
-                    // Set completion flags
-                    window.uploadCompleted = true;
-                    sessionStorage.setItem('uploadJustCompleted', 'true');
-                    localStorage.setItem('uploadSuccess', Date.now().toString());
-                    
-                    // Clean up and set completion flags
-                    window.uploadCompleted = true;
-                    sessionStorage.setItem('uploadJustCompleted', 'true');
-                    localStorage.setItem('uploadSuccess', Date.now().toString());
-                    
-                    // Block verify redirects for a short time
-                    window.blockVerifyRedirect = true;
-                    setTimeout(() => {
-                        window.blockVerifyRedirect = false;
-                    }, 5000);
-                    
                     app.showToast('Proof submitted! Returning to room...');
-
                     
-                    // Simple redirect to room
+                    // Redirect to room feed tab
                     setTimeout(() => {
                         window.location.href = 'room.html#feed';
                     }, 1000);
