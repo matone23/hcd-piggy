@@ -168,25 +168,70 @@
                 participantScores.sort((a, b) => b.score - a.score);
                 
                 const winner = participantScores[0];
-                const hasCompetition = winner && winner.score > 0 && participantScores.some(p => p.score < winner.score);
-                const isSingleParticipant = participantScores.length === 1;
+                const topScore = winner.score;
                 
-                // Return winner if there's competition, or if they're the only participant
-                if (hasCompetition || isSingleParticipant) {
-                    return {
-                        nickname: winner.nickname,
-                        userId: winner.userId,
-                        points: winner.displayScore,
-                        color: winner.color
-                    };
-                } else {
-                    console.log('🤝 No clear winner (tie or no points)');
+                // No winner if no points scored
+                if (topScore === 0) {
                     return null;
                 }
+                
+                // Check for tie (multiple participants with same top score)
+                const tiedParticipants = participantScores.filter(p => p.score === topScore);
+                if (tiedParticipants.length > 1) {
+                    return {
+                        isTie: true,
+                        tiedParticipants: tiedParticipants.map(p => ({
+                            nickname: p.nickname,
+                            userId: p.userId,
+                            color: p.color
+                        })),
+                        points: winner.displayScore
+                    };
+                }
+                
+                // Single winner
+                return {
+                    nickname: winner.nickname,
+                    userId: winner.userId,
+                    points: winner.displayScore,
+                    color: winner.color
+                };
             }
             
             // Display winner information
-            if (winnerData && winnerData.nickname) {
+            if (winnerData && winnerData.isTie) {
+                // Handle tie scenario
+                const userInTie = winnerData.tiedParticipants.some(p => p.userId === user.userId);
+                
+                if (winnerTitle) {
+                    winnerTitle.textContent = "It's a tie! 🤝";
+                    winnerTitle.style.background = 'linear-gradient(135deg, #FFD700, #FFA500)';
+                    winnerTitle.style.color = '#fff';
+                    winnerTitle.style.padding = '16px 24px';
+                    winnerTitle.style.borderRadius = '12px';
+                    winnerTitle.style.textShadow = '0 2px 4px rgba(0,0,0,0.4)';
+                    winnerTitle.style.fontWeight = '800';
+                    winnerTitle.style.fontSize = '24px';
+                    winnerTitle.style.boxShadow = '0 4px 12px rgba(255, 215, 0, 0.3)';
+                }
+                
+                if (winnerDesc) {
+                    const tiedNames = winnerData.tiedParticipants.map(p => p.nickname).join(', ');
+                    let message = '';
+                    
+                    if (competitionData?.mode === 'oneday') {
+                        message = `${tiedNames} all completed ${winnerData.points}% of the tasks.`;
+                    } else {
+                        message = `${tiedNames} all earned ${winnerData.points} points.`;
+                    }
+                    
+                    const ctaMessage = userInTie 
+                        ? ' Amazing work! Ready to break the tie with a rematch?' 
+                        : ' Who will win the rematch?';
+                    
+                    winnerDesc.textContent = message + ctaMessage;
+                }
+            } else if (winnerData && winnerData.nickname) {
                 
                 // Check if current user is the winner
                 const userIsWinner = winnerData.userId === user.userId;
