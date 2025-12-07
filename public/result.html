@@ -221,9 +221,9 @@
                 }
             }
             
-            // Store winner data for piggy bank display, but don't reveal it in the title/description
+            // Store winner data for piggy bank display
             if (winnerData && winnerData.nickname) {
-                console.log('🎨 Winner determined (hidden from display):', winnerData.nickname);
+                console.log('🎨 Winner determined:', winnerData.nickname);
                 
                 // Store winner color for IoT integration
                 if (winnerData.color) {
@@ -243,13 +243,36 @@
                 }
             }
             
-            // Display same message for everyone (don't reveal winner)
-            if (winnerTitle) {
-                winnerTitle.textContent = 'Competition Complete!';
-            }
-            
-            if (winnerDesc) {
-                winnerDesc.textContent = '🎉 Congratulations on completing the challenge! Set up a new competition to continue.';
+            // Display winner information
+            if (winnerData && winnerData.nickname) {
+                console.log('🎨 Displaying winner with color:', winnerData.color);
+                
+                if (winnerTitle) {
+                    winnerTitle.textContent = `${winnerData.nickname} wins!`;
+                    // Add winner's color as background accent
+                    if (winnerData.color) {
+                        winnerTitle.style.background = `linear-gradient(135deg, ${winnerData.color}, ${winnerData.color}cc)`;
+                        winnerTitle.style.color = '#fff';
+                        winnerTitle.style.padding = '12px 20px';
+                        winnerTitle.style.borderRadius = '8px';
+                        winnerTitle.style.textShadow = '0 1px 2px rgba(0,0,0,0.3)';
+                    }
+                }
+                
+                if (winnerDesc) {
+                    const pointsText = winnerData.points ? ` with ${winnerData.points} points` : '';
+                    winnerDesc.textContent = `🎉 Congratulations${pointsText}! Set up a new challenge and keep the streak.`;
+                }
+            } else {
+                // Fallback display
+                console.log('🤝 No winner determined, showing default message');
+                
+                if (winnerTitle) {
+                    winnerTitle.textContent = competitionData?.manuallyEnded ? 'Competition Complete!' : 'Great effort everyone!';
+                }
+                if (winnerDesc) {
+                    winnerDesc.textContent = 'Everyone did their best! Set up a new challenge to continue.';
+                }
             }
 
             // Display user's color with piggy bank message - only if user won
