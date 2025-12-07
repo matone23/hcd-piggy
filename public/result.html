@@ -65,17 +65,12 @@
     
     <script type="module">
         document.addEventListener('DOMContentLoaded', async () => {
-            console.log('Result page DOM loaded');
-            
             // Load app module
             let app;
             try {
                 const appModule = await import('./js/app.js');
                 app = appModule.default;
-                
-                // Initialize Firebase
                 await app.initializeFirebase();
-                console.log('Firebase ready in result:', app.isFirebaseReady());
             } catch (error) {
                 console.error('Failed to load app module:', error);
                 return;
@@ -83,7 +78,6 @@
 
             const user = app.requireUser();
             const room = JSON.parse(localStorage.getItem('piggy-habit-room') || '{}');
-            console.log('Result room data:', room);
             
             const loadingState = document.getElementById('loadingState');
             const contentState = document.getElementById('contentState');
@@ -91,46 +85,32 @@
             const winnerDesc = document.getElementById('winnerDesc');
             const rematchBtn = document.getElementById('rematchBtn');
 
-            console.log('Elements found:', { winnerTitle, winnerDesc, rematchBtn });
-
             // Load complete winner data from Firebase
             let winnerData = null;
             let competitionData = null;
             
             if (app.isFirebaseReady() && room.id) {
                 try {
-                    console.log('🔍 Fetching competition data from Firebase for room:', room.id);
                     const firebaseRoom = await app.getRoom(room.id);
                     competitionData = firebaseRoom;
                     
                     if (firebaseRoom) {
-                        console.log('📊 Firebase room data loaded');
-                        
-                        // Check if winner is already stored
                         if (firebaseRoom.winner) {
-                            console.log('🏆 Using stored winner:', firebaseRoom.winner);
                             winnerData = firebaseRoom.winner;
                         } else {
-                            // Calculate winner from current data
-                            console.log('🔢 Calculating winner from competition data...');
                             winnerData = calculateWinner(firebaseRoom, firebaseRoom.mode);
                             
-                            // Save calculated winner back to Firebase for future access (IoT, etc)
                             if (winnerData) {
-                                console.log('💾 Saving calculated winner to Firebase...');
                                 try {
                                     await app.updateRoom(room.id, { 
                                         winner: winnerData,
                                         winnerCalculatedAt: Date.now()
                                     });
-                                    console.log('✅ Winner saved to Firebase');
                                 } catch (error) {
-                                    console.warn('⚠️ Failed to save winner to Firebase:', error);
+                                    console.warn('Failed to save winner to Firebase:', error);
                                 }
                             }
                         }
-                        
-                        console.log('🎯 Final winner data:', winnerData);
                     }
                 } catch (error) {
                     console.warn('❌ Failed to load room from Firebase:', error);
@@ -140,7 +120,6 @@
             // Function to calculate winner from room data
             function calculateWinner(roomData, mode = 'routine') {
                 if (!roomData || !roomData.participants) {
-                    console.warn('❌ Missing room data for winner calculation');
                     return null;
                 }
                 
@@ -194,7 +173,6 @@
                 
                 // Return winner if there's competition, or if they're the only participant
                 if (hasCompetition || isSingleParticipant) {
-                    console.log('🏆 Winner:', winner.nickname, 'with', winner.displayScore, mode === 'oneday' ? '%' : 'pts');
                     return {
                         nickname: winner.nickname,
                         userId: winner.userId,
@@ -264,8 +242,6 @@
                 }
             } else {
                 // Fallback display
-                console.log('🤝 No winner determined, showing default message');
-                
                 if (winnerTitle) {
                     winnerTitle.textContent = competitionData?.manuallyEnded ? 'Competition Complete!' : 'Great effort everyone!';
                 }
@@ -274,17 +250,11 @@
                 }
             }
 
-            // Display user's color with piggy bank message - only if user won
-            const userIsWinner = winnerData && winnerData.userId === user.userId;
-            
-            console.log('🎉 User won this competition:', userIsWinner);
-
             // Hide loading state and show content
             loadingState.style.display = 'none';
             contentState.style.display = 'block';
 
             rematchBtn?.addEventListener('click', async () => {
-                console.log('Rematch button clicked');
                 
                 try {
                     rematchBtn.disabled = true;
@@ -295,8 +265,6 @@
                     // Clear old competition data for fresh start
                     localStorage.removeItem('piggy-habit-room');
                     localStorage.removeItem('piggy-habit-proof-done');
-                    
-                    console.log('🗑️ Cleared old competition data for fresh start');
                     
                     setTimeout(() => {
                         window.location.href = 'create.html';
@@ -309,8 +277,6 @@
                     rematchBtn.textContent = 'Rematch';
                 }
             });
-            
-            console.log('Result page initialized successfully');
         });
     </script>
 </body>

@@ -99,17 +99,14 @@
     
     <script type="module">
         document.addEventListener('DOMContentLoaded', async () => {
-            console.log('Lobby DOM loaded');
-            
             // Check for localStorage/cookie availability
             let storageAvailable = false;
             try {
                 localStorage.setItem('test', 'test');
                 localStorage.removeItem('test');
                 storageAvailable = true;
-                console.log('✅ localStorage is available');
             } catch (e) {
-                console.warn('❌ localStorage/cookies disabled:', e);
+                console.warn('localStorage/cookies disabled:', e);
                 storageAvailable = false;
             }
             
@@ -122,53 +119,33 @@
             try {
                 const appModule = await import('./js/app.js');
                 app = appModule.default;
-                
-                // Initialize Firebase (might fail with cookies disabled)
                 await app.initializeFirebase();
-                console.log('Firebase ready in lobby:', app.isFirebaseReady());
-                
             } catch (error) {
                 console.error('Failed to load app module or Firebase:', error);
                 if (!storageAvailable) {
                     alert('This app requires cookies and localStorage to function. Please enable cookies and refresh the page.');
                     return;
-                } else {
-                    console.warn('Continuing without Firebase initialization');
                 }
             }
 
-            // Check for user - simplified logic to avoid loops
+            // Check for user
             const user = app.requireUser();
             if (!user) {
-                // User will be redirected by requireUser if no data found
                 return;
             }
             
             // Get initial active room from localStorage
             let activeRoom = app.getActiveRoom();
-            console.log('🏠 Initial active room check:', activeRoom);
-            
-            // If no active room found, we'll rely on localStorage only to avoid permission issues
-            // The authenticateUser function should have loaded room data if it exists
-            if (!activeRoom) {
-                console.log('📝 No active room found in localStorage');
-            } else {
-                console.log('✅ Active room found:', activeRoom.name);
-            }
             const greeting = document.getElementById('greeting');
             const createBtn = document.getElementById('createBtn');
             const joinBtn = document.getElementById('joinBtn');
             const joinCode = document.getElementById('join-code');
             const logoutBtn = document.getElementById('logoutBtn');
-            
-            // Get UI elements
             const lobbyContent = document.getElementById('lobbyContent');
             const createRoomCard = document.getElementById('createRoomCard');
             const joinRoomCard = document.getElementById('joinRoomCard');
             const oldCompetitionsSection = document.getElementById('oldCompetitionsSection');
             const oldCompetitionsContainer = document.getElementById('oldCompetitionsContainer');
-
-            console.log('Active room check:', activeRoom);
 
             // Fetch fresh room data from Firebase if available to get correct participant count
             let freshRoomData = activeRoom;
@@ -176,25 +153,20 @@
                 try {
                     const fbRoom = await app.getRoom(activeRoom.id);
                     if (fbRoom) {
-                        console.log('📡 Fetched fresh room data from Firebase');
                         freshRoomData = fbRoom;
-                        // Update localStorage with fresh data
                         app.saveActiveRoom(freshRoomData);
                     }
                 } catch (error) {
-                    console.warn('Could not fetch fresh room data, using cached:', error);
+                    console.warn('Could not fetch fresh room data:', error);
                     freshRoomData = activeRoom;
                 }
             }
 
             // Check if the active room has ended
             const roomHasEnded = freshRoomData && freshRoomData.id && app.isCompetitionEnded(freshRoomData);
-            console.log('Room ended status:', { hasRoom: !!freshRoomData?.id, hasEnded: roomHasEnded });
 
             // Handle active/ended room display
             if (freshRoomData && freshRoomData.id && !roomHasEnded) {
-                console.log('User has active room:', freshRoomData.name);
-                
                 // Create active room card
                 const activeRoomCard = document.createElement('div');
                 activeRoomCard.className = 'card';
@@ -261,8 +233,6 @@
                     joinCode.disabled = true;
                 }
             } else if (roomHasEnded) {
-                console.log('Room has ended, moving to old competitions section');
-                
                 // Show old competitions section
                 oldCompetitionsSection.style.display = 'block';
                 
@@ -298,7 +268,6 @@
                 });
                 
                 // Clear active room to allow new creations/joins
-                console.log('Clearing ended room from active status');
                 app.clearActiveRoom();
                 
                 // Create and show new room cards
@@ -334,8 +303,6 @@
                 if (joinCode) {
                     joinCode.disabled = false;
                 }
-            } else {
-                console.log('No active room, showing normal lobby options');
             }
 
             // Auto-fill room code if shared (only if no active room)
@@ -356,7 +323,6 @@
             }
 
             createBtn?.addEventListener('click', async () => {
-                // Check current active room status (not the cached variable)
                 const currentActiveRoom = app.getActiveRoom();
                 const hasActiveRoom = currentActiveRoom && currentActiveRoom.id;
                 
@@ -365,24 +331,19 @@
                     return;
                 }
                 
-                console.log('🎨 No active room found, proceeding to create new room');
                 window.location.href = 'create.html';
             });
 
             joinBtn?.addEventListener('click', async () => {
-                // Check current active room status (not the cached variable)
                 const currentActiveRoom = app.getActiveRoom();
                 if (currentActiveRoom && currentActiveRoom.id) {
                     app.showToast('You already have an active room. Go to your room or logout to join another.');
                     return;
                 }
                 
-                console.log('🚀 Join button clicked');
                 const code = joinCode?.value?.trim();
-                console.log('🚀 Code entered:', code);
                 
                 if (!code || !/^[0-9]{6}$/.test(code)) {
-                    console.log('🚀 Invalid code, showing toast');
                     app.showToast('Enter a valid 6-digit code.');
                     joinCode?.focus();
                     return;
@@ -391,21 +352,8 @@
                 try {
                     joinBtn.disabled = true;
                     joinBtn.textContent = 'Joining...';
-                    console.log('🚀 About to call app.joinRoom with code:', code);
-                    
-                    console.log('Current localStorage state:');
-                    console.log('- User:', localStorage.getItem('piggy-habit-user'));
-                    console.log('- Room:', localStorage.getItem('piggy-habit-room'));
-                    console.log('- Draft:', localStorage.getItem('piggy-habit-draft'));
-                    
-                    console.log('Attempting to join room with code:', code);
-                    console.log('Firebase ready status:', app.isFirebaseReady());
-                    console.log('Current app user:', app.getUser());
-                    console.log('Current Firebase user:', app.getCurrentUser());
                     
                     const room = await app.joinRoom(code);
-                    console.log('🚀 joinRoom returned:', room);
-                    console.log('Successfully joined room:', room);
                     
                     app.showToast(`Joined room ${code}!`);
                     
@@ -416,32 +364,20 @@
                     if (room && room.participants && currentUser) {
                         const userParticipant = room.participants[currentUser.userId];
                         hasCompletedOnboarding = userParticipant && userParticipant.color && userParticipant.onboardingComplete;
-                        console.log('🔍 Onboarding check:', {
-                            userParticipant,
-                            hasColor: userParticipant?.color,
-                            hasFlag: userParticipant?.onboardingComplete,
-                            hasCompletedOnboarding
-                        });
                     }
                     
                     // Redirect based on onboarding status
                     const redirectUrl = hasCompletedOnboarding ? 'room.html' : `onboarding.html?type=${room.mode || 'routine'}`;
-                    console.log('🔄 Redirecting to:', redirectUrl);
                     
-                    // Check if we can use setTimeout (might fail with strict cookie policies)
                     if (storageAvailable) {
                         setTimeout(() => {
                             window.location.href = redirectUrl;
                         }, 500);
                     } else {
-                        // Immediate redirect for cookie-disabled browsers
-                        console.log('No storage - immediate redirect');
                         window.location.href = redirectUrl;
                     }
                 } catch (error) {
-                    console.error('🚀 Error caught in lobby:', error);
                     console.error('Error joining room:', error);
-                    console.error('Error message:', error.message);
                     
                     // Show specific error messages
                     if (error.message.includes('does not exist')) {
@@ -456,7 +392,6 @@
                         app.showToast('Failed to join room: ' + error.message);
                     }
                 } finally {
-                    console.log('🚀 Finally block - restoring button');
                     joinBtn.disabled = false;
                     joinBtn.textContent = 'Join';
                 }

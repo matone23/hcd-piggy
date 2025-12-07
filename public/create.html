@@ -85,17 +85,12 @@
     
     <script type="module">
         document.addEventListener('DOMContentLoaded', async () => {
-            console.log('Create page DOM loaded');
-            
             // Load app module
             let app;
             try {
                 const appModule = await import('./js/app.js');
                 app = appModule.default;
-                
-                // Initialize Firebase
                 await app.initializeFirebase();
-                console.log('Firebase ready in create page:', app.isFirebaseReady());
             } catch (error) {
                 console.error('Failed to load app module:', error);
                 return;
@@ -110,8 +105,6 @@
             const roomName = document.getElementById('room-name');
             const dday = document.getElementById('dday');
 
-            console.log('Elements found:', { modeChips, durationChips, nextBtn, roomName });
-
             if (dday) {
                 dday.valueAsDate = new Date();
             }
@@ -122,15 +115,12 @@
                 dday: dday?.value || new Date().toISOString().split('T')[0]
             };
 
-            console.log('Initial form state:', formState);
-
             const setActive = (nodeList, target) => {
                 nodeList.forEach(el => el.classList.toggle('active', el === target));
             };
 
             modeChips.forEach(chip => {
                 chip.addEventListener('click', () => {
-                    console.log('Mode chip clicked:', chip.dataset.mode);
                     formState.mode = chip.dataset.mode;
                     setActive(modeChips, chip);
                     if (formState.mode === 'routine') {
@@ -145,7 +135,6 @@
 
             durationChips.forEach(chip => {
                 chip.addEventListener('click', () => {
-                    console.log('Duration chip clicked:', chip.dataset.days);
                     formState.duration = Number(chip.dataset.days);
                     setActive(durationChips, chip);
                 });
@@ -154,12 +143,10 @@
             if (dday) {
                 dday.addEventListener('change', () => {
                     formState.dday = dday.value;
-                    console.log('D-day changed:', formState.dday);
                 });
             }
 
             nextBtn?.addEventListener('click', async () => {
-                console.log('Next button clicked');
                 const name = roomName?.value?.trim();
                 if (!name) {
                     app.showToast('Enter a room name.');
@@ -180,22 +167,13 @@
                         owner: user.nickname
                     };
 
-                    console.log('Creating room with data:', roomData);
-                    console.log('Firebase ready status:', app.isFirebaseReady ? app.isFirebaseReady() : 'unknown');
-                    
-                    // Create room using Firebase
-                    console.log('⏳ Calling app.createRoom...');
                     const room = await app.createRoom(roomData);
-                    console.log('✅ Room created successfully:', room);
                     
                     if (!room || !room.id) {
                         throw new Error('Room creation returned invalid data');
                     }
                     
                     app.showToast(`Room "${name}" created! Code: ${room.code || room.id}`);
-                    
-                    // Show room code in console for easy copying
-                    console.log('🎉 ROOM CREATED! Share this code:', room.code || room.id);
                     
                     // Save draft for onboarding
                     const draft = {
@@ -209,32 +187,18 @@
                     };
                     
                     localStorage.setItem('piggy-habit-draft', JSON.stringify(draft));
-                    console.log('💾 Draft saved to localStorage:', draft);
-                    
-                    // Only redirect on successful creation
-                    console.log('🔄 Redirecting to onboarding...');
                     window.location.href = `onboarding.html?type=${formState.mode}`;
                 } catch (error) {
-                    console.error('❌ ROOM CREATION FAILED:', error);
-                    console.error('Error type:', typeof error);
-                    console.error('Error message:', error.message);
-                    console.error('Error stack:', error.stack);
+                    console.error('Room creation failed:', error);
                     
-                    // Show detailed error message that stays visible
                     const errorMsg = error.message || 'Unknown error occurred';
                     app.showToast(`❌ Firebase Error: ${errorMsg}`);
-                    
-                    // Also show in alert for visibility
                     alert(`Room creation failed:\n\n${errorMsg}\n\nCheck the browser console for more details.`);
-                    
-                    // DO NOT REDIRECT - stay on this page so user can try again
                 } finally {
                     nextBtn.disabled = false;
                     nextBtn.textContent = 'Next: Pledge';
                 }
             });
-
-            console.log('Create page initialized successfully');
         });
     </script>
 </body>
