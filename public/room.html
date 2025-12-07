@@ -489,20 +489,46 @@
             const getLeader = () => {
                 if (participants.length <= 1) return null;
                 
-                // Calculate actual points from submissions for each participant
-                const participantsWithPoints = participants.map(p => {
-                    const userSubmissions = Object.values(roomData.submissions || {}).filter(s => 
-                        s.userId === p.userId && s.status === 'approved'
-                    );
-                    const calculatedPoints = userSubmissions.reduce((total, sub) => {
-                        return total + (sub.task?.points || 10);
-                    }, 0);
-                    return { ...p, calculatedPoints };
+                console.log('🔍 getLeader called with mode:', mode, 'roomData.mode:', roomData.mode);
+                
+                // Calculate scores based on mode
+                const participantsWithScores = participants.map(p => {
+                    if (mode === 'oneday') {
+                        // For oneday: calculate percentage of tasks completed
+                        const oneDayReferenceDate = new Date(roomData.dday).toDateString();
+                        const userSubmissions = Object.values(roomData.submissions || {}).filter(s => 
+                            s.userId === p.userId && 
+                            s.status === 'approved' &&
+                            new Date(s.submittedAt).toDateString() === oneDayReferenceDate
+                        );
+                        const tasksCompleted = userSubmissions.length;
+                        const totalTasks = (p.goals && p.goals.length) ? p.goals.length : 0;
+                        const percentage = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
+                        return { ...p, calculatedScore: percentage, scoreType: 'percentage' };
+                    } else {
+                        // For routine: calculate points from approved submissions
+                        const userSubmissions = Object.values(roomData.submissions || {}).filter(s => 
+                            s.userId === p.userId && s.status === 'approved'
+                        );
+                        const calculatedPoints = userSubmissions.reduce((total, sub) => {
+                            return total + (sub.task?.points || 10);
+                        }, 0);
+                        return { ...p, calculatedScore: calculatedPoints, scoreType: 'points' };
+                    }
                 });
                 
-                const sorted = participantsWithPoints.slice().sort((a,b) => b.calculatedPoints - a.calculatedPoints);
-                const topScore = sorted[0].calculatedPoints || 0;
-                const hasCompetition = topScore > 0 && sorted.some(p => p.calculatedPoints < topScore);
+                const sorted = participantsWithScores.slice().sort((a,b) => b.calculatedScore - a.calculatedScore);
+                const topScore = sorted[0].calculatedScore || 0;
+                const hasCompetition = topScore > 0 && sorted.some(p => p.calculatedScore < topScore);
+                
+                console.log('🏆 getLeader result:', {
+                    mode,
+                    topScore,
+                    hasCompetition,
+                    winner: sorted[0] ? { nickname: sorted[0].nickname, score: sorted[0].calculatedScore, scoreType: sorted[0].scoreType } : null,
+                    allScores: sorted.map(p => ({ nickname: p.nickname, score: p.calculatedScore, scoreType: p.scoreType }))
+                });
+                
                 return hasCompetition ? sorted[0] : null;
             };
             
@@ -512,45 +538,14 @@
             };
             
             const updateFeed = () => {
-                if (feedTab && feedTab.style.display !== 'none') {
-                    // Only regenerate feed data if the feed is empty or was showing "no activity"
-                    // Otherwise, just render which will do smart incremental updates
-                    if (feedTab.children.length === 0 || (feedTab.firstChild && feedTab.firstChild.textContent.includes('No activity yet'))) {
-                        const newFeedData = generateFeedData();
-                        feedData.length = 0;
-                        feedData.push(...newFeedData);
-                    } else {
-                        // For existing feeds, do a smart update that only adds/updates changed items
-                        const newFeedData = generateFeedData();
-                        
-                        // Compare old and new data to find changes
-                        // We'll merge: keep existing cards, add new ones, update changed ones
-                        for (let i = 0; i < newFeedData.length; i++) {
-                            const newCard = newFeedData[i];
-                            const oldCardIndex = feedData.findIndex(card => 
-                                (card.submissionId && card.submissionId === newCard.submissionId) ||
-                                (!card.submissionId && card.userId === newCard.userId && card.timestamp === newCard.timestamp)
-                            );
-                            
-                            if (oldCardIndex === -1) {
-                                // New card, add it
-                                feedData.splice(i, 0, newCard);
-                            } else if (oldCardIndex !== i) {
-                                // Card position changed, move it
-                                const [moved] = feedData.splice(oldCardIndex, 1);
-                                feedData.splice(i, 0, moved);
-                            } else {
-                                // Card exists at same position, update its data
-                                feedData[i] = { ...feedData[i], ...newCard };
-                            }
-                        }
-                        
-                        // Remove cards that no longer exist
-                        while (feedData.length > newFeedData.length) {
-                            feedData.pop();
-                        }
-                    }
-                    
+                // Always regenerate and render feed data - this ensures it updates automatically
+                const newFeedData = generateFeedData();
+                feedData.length = 0;
+                feedData.push(...newFeedData);
+                
+                // Always render if the feed tab exists (whether visible or not)
+                // This ensures the feed is up-to-date when you switch to it
+                if (feedTab) {
                     renderFeed();
                 }
             };
@@ -687,7 +682,13 @@
                 btn.addEventListener('click', () => {
                     tabButtons.forEach(b => b.classList.toggle('active', b === btn));
                     if (missionTab) missionTab.style.display = btn.dataset.tab === 'mission' ? 'flex' : 'none';
-                    if (feedTab) feedTab.style.display = btn.dataset.tab === 'feed' ? 'flex' : 'none';
+                    if (feedTab) {
+                        feedTab.style.display = btn.dataset.tab === 'feed' ? 'flex' : 'none';
+                        // Refresh feed when tab becomes visible
+                        if (btn.dataset.tab === 'feed') {
+                            renderFeed();
+                        }
+                    }
                     if (rankTab) {
                         rankTab.style.display = btn.dataset.tab === 'rank' ? 'flex' : 'none';
                         // Refresh ranking when tab becomes visible
@@ -905,7 +906,8 @@
                     const deadlineSubmissions = roomData.submissions ? 
                         Object.values(roomData.submissions).filter(s => 
                             s.userId === currentUserId && 
-                            new Date(s.submittedAt).toDateString() === oneDayReferenceDate
+                            new Date(s.submittedAt).toDateString() === oneDayReferenceDate &&
+                            s.task?.idx === idx  // Find submissions for THIS specific task
                         ) : [];
                     const latestDeadlineSubmission = deadlineSubmissions.length > 0 ? 
                         deadlineSubmissions[deadlineSubmissions.length - 1] : null;
@@ -913,12 +915,12 @@
                     const task = { 
                         text: g.text || `Task ${idx + 1}`,
                         minutes: g.minutes || 0,
-                        done: latestDeadlineSubmission?.status === 'approved' && latestDeadlineSubmission.task?.idx === idx,
-                        pending: latestDeadlineSubmission?.status === 'pending' && latestDeadlineSubmission.task?.idx === idx,
-                        rejected: latestDeadlineSubmission?.status === 'rejected' && latestDeadlineSubmission.task?.idx === idx,
+                        done: latestDeadlineSubmission?.status === 'approved',
+                        pending: latestDeadlineSubmission?.status === 'pending',
+                        rejected: latestDeadlineSubmission?.status === 'rejected',
                         idx 
                     };
-                    console.log(`Task ${idx} structure:`, { keys: Object.keys(task), text: task.text, minutes: task.minutes });
+                    console.log(`Task ${idx} structure:`, { text: task.text, minutes: task.minutes, done: task.done, pending: task.pending });
                     return task;
                 }) : [],
             } : { tasks: [] };
@@ -1000,7 +1002,9 @@
                         new Date(sub.submittedAt).toDateString() === todayDate
                     ) : [];
                 
-                if (todayUserSubmissions.length > 0) {
+                // For routine mode: only allow one submission per day
+                // For oneday mode: allow multiple submissions (one per task) on the same day
+                if (mode === 'routine' && todayUserSubmissions.length > 0) {
                     const latestSubmission = todayUserSubmissions[todayUserSubmissions.length - 1];
                     if (latestSubmission.status === 'pending') {
                         app.showToast('You already have a submission pending approval today!');
@@ -1012,6 +1016,24 @@
                         // Allow resubmission if previous was rejected
                         console.log('Previous submission was rejected, allowing new upload');
                         app.showToast('Retrying after rejection. Upload your improved proof!');
+                    }
+                } else if (mode === 'oneday') {
+                    // For oneday: check for pending or approved submission for THIS SPECIFIC TASK
+                    const taskIdx = payload.idx;
+                    const sameTaskSubmission = todayUserSubmissions.find(s => 
+                        s.task?.idx === taskIdx
+                    );
+                    
+                    if (sameTaskSubmission) {
+                        if (sameTaskSubmission.status === 'pending') {
+                            app.showToast('You already have this task pending approval. Wait for feedback!');
+                            return;
+                        } else if (sameTaskSubmission.status === 'approved') {
+                            app.showToast('You have already completed this task!');
+                            return;
+                        } else if (sameTaskSubmission.status === 'rejected') {
+                            app.showToast('Try again with better proof!');
+                        }
                     }
                 }
                 
@@ -1096,7 +1118,7 @@
                 const row = document.createElement('div');
                 row.className = 'list-item flex between';
                 row.style.gap = '10px';
-                row.style.cursor = 'pointer';
+                row.style.cursor = task.done ? 'not-allowed' : 'pointer';
 
                 const left = document.createElement('div');
                 left.className = 'flex';
@@ -1114,13 +1136,21 @@
                 title.textContent = task.text || 'Task';
                 const meta = document.createElement('div');
                 meta.className = 'muted';
-                meta.textContent = `${task.minutes || 0} min`;
+                if (task.pending) {
+                    meta.textContent = `${task.minutes || 0} min • ⏳ Pending`;
+                    meta.style.color = '#FFA500';
+                } else {
+                    meta.textContent = `${task.minutes || 0} min`;
+                }
                 textWrap.appendChild(title);
                 textWrap.appendChild(meta);
 
                 if (task.done) {
                     title.style.textDecoration = 'line-through';
                     title.style.opacity = '0.6';
+                    row.style.opacity = '0.6';
+                } else if (task.pending) {
+                    row.style.opacity = '0.7';
                 }
 
                 const badge = document.createElement('div');
@@ -1134,8 +1164,12 @@
                 row.appendChild(left);
                 list.appendChild(row);
 
-                // Click on the entire row to upload proof
-                row.addEventListener('click', () => triggerUpload({ ...task, idx: task.idx }));
+                // Click on the entire row to upload proof - but only if task not done and not pending
+                if (!task.done && !task.pending) {
+                    row.addEventListener('click', () => triggerUpload({ ...task, idx: task.idx }));
+                } else {
+                    row.style.cursor = 'not-allowed';
+                }
             });
 
             missionTab.appendChild(list);
@@ -1192,7 +1226,7 @@
                 const feedData = [];
                 const currentUserId = app.getCurrentUser()?.uid || user.userId;
                 
-                console.log('🔄 Generating feed data with submissions:', Object.keys(roomData.submissions || {}).length);
+
                 
                 // Add participant join events first
                 if (roomData.participants) {
@@ -1238,6 +1272,7 @@
                 // Add submissions
                 if (roomData.submissions) {
                     const submissions = Object.values(roomData.submissions);
+
                     
                     submissions.forEach(submission => {
                         const timeAgo = submission.submittedAt ? 
@@ -1292,7 +1327,7 @@
                     });
                 }
                 
-                // Sort all events by timestamp (newest first)
+                // Sort all events by timestamp - NEWEST FIRST so newest appears at top
                 feedData.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                 
                 // Add fallback message if still no data
@@ -1311,13 +1346,11 @@
                     });
                 }
                 
-                console.log('✅ Generated feed data:', feedData.length, 'items including', 
-                    feedData.filter(f => f.isJoinEvent).length, 'join events and',
-                    feedData.filter(f => f.isSubmission).length, 'submissions');
+
                 return feedData;
             };
             
-            let feedData = generateFeedData();
+            let feedData = [];
             let lastRenderedFeedIds = new Set(); // Track what we've already rendered
             
             // Handle approval/rejection of submissions
@@ -1440,59 +1473,123 @@
                 if (!feedTab) return;
                 
                 if (feedData.length === 0) {
-                    if (feedTab.children.length === 0) {
-                        const emptyState = document.createElement('div');
-                        emptyState.className = 'card stack';
-                        emptyState.innerHTML = `
-                            <div style="text-align: center; color: var(--muted);">
-                                <div style="font-size: 48px; margin-bottom: 12px;">📝</div>
-                                <div style="font-weight: 700;">No activity yet</div>
-                                <div class="muted">Complete tasks to see updates here!</div>
-                            </div>
-                        `;
-                        feedTab.appendChild(emptyState);
-                    }
+                    feedTab.innerHTML = '';
+                    const emptyState = document.createElement('div');
+                    emptyState.className = 'card stack';
+                    emptyState.innerHTML = `
+                        <div style="text-align: center; color: var(--muted);">
+                            <div style="font-size: 48px; margin-bottom: 12px;">📝</div>
+                            <div style="font-weight: 700;">No activity yet</div>
+                            <div class="muted">Complete tasks to see updates here!</div>
+                        </div>
+                    `;
+                    feedTab.appendChild(emptyState);
                     return;
                 }
                 
-                // Only clear and re-render if we're showing completely empty state
-                if (feedTab.children.length === 0 || (feedTab.firstChild && feedTab.firstChild.textContent.includes('No activity yet'))) {
-                    feedTab.innerHTML = '';
-                }
-                
-                feedData.forEach((cardData, idx) => {
-                    // Generate unique ID for this card
+                // Only rebuild cards that don't already exist in the DOM
+                // This prevents image reloading for existing cards
+                feedData.forEach((cardData) => {
                     const cardId = cardData.submissionId || `join-${cardData.userId}-${cardData.timestamp}`;
                     
-                    // Check if this card already exists in the DOM
+                    // Check if card already exists
                     let existingCard = feedTab.querySelector(`[data-feed-id="${cardId}"]`);
                     
-                    // If card exists and is a pending submission, update approval counts only
-                    if (existingCard && cardData.status === 'pending' && cardData.submissionData) {
-                        // Update just the approval buttons and counts instead of re-rendering
+                    if (existingCard && cardData.submissionData && cardData.status === 'pending') {
+                        // Update approval counts for pending submissions (only)
                         const approveBtn = existingCard.querySelector('.btn-primary');
                         const rejectBtn = existingCard.querySelector('.btn-outline[data-reject]');
-                        const approvalSection = existingCard.querySelector('[data-approval-section]');
+                        let approvalSection = existingCard.querySelector('[data-approval-section]');
                         
-                        if (approveBtn) approveBtn.textContent = `👍 Approve (${cardData.approvals || 0})`;
-                        if (rejectBtn) rejectBtn.textContent = `👎 Reject (${cardData.rejections || 0})`;
-                        if (approvalSection) {
-                            approvalSection.innerHTML = `
-                                <div class="muted" style="font-size: 12px; margin-bottom: 8px;">
-                                    Approvals needed: ${cardData.approvalCount || 0}/${cardData.totalVoters || 0}
-                                </div>
-                            `;
+                        // If approval section doesn't exist, create it NOW
+                        if (!approvalSection) {
+                            const currentUserId = app.getCurrentUser()?.uid || user.userId;
+                            
+                            // Only create if this is NOT the user's own submission
+                            if (cardData.submissionData.userId !== currentUserId) {
+                                approvalSection = document.createElement('div');
+                                approvalSection.style.marginTop = '12px';
+                                approvalSection.setAttribute('data-approval-section', 'true');
+                                approvalSection.innerHTML = `
+                                    <div class="muted" style="font-size: 12px; margin-bottom: 8px;">
+                                        Approvals needed: ${cardData.approvalCount || 0}/${cardData.totalVoters || 0}
+                                    </div>
+                                `;
+                                
+                                const buttonContainer = document.createElement('div');
+                                buttonContainer.className = 'between flex';
+                                buttonContainer.style.gap = '8px';
+                                
+                                const approveBtn = document.createElement('button');
+                                approveBtn.className = 'btn btn-primary btn-small';
+                                approveBtn.textContent = `👍 Approve (${cardData.approvals || 0})`;
+                                approveBtn.addEventListener('click', async () => {
+                                    await handleApproval(cardData.submissionData, true, cardData.submissionId);
+                                });
+                                
+                                const rejectBtn = document.createElement('button');
+                                rejectBtn.className = 'btn btn-outline btn-small';
+                                rejectBtn.setAttribute('data-reject', 'true');
+                                rejectBtn.textContent = `👎 Reject (${cardData.rejections || 0})`;
+                                rejectBtn.addEventListener('click', async () => {
+                                    await handleApproval(cardData.submissionData, false, cardData.submissionId);
+                                });
+                                
+                                buttonContainer.appendChild(approveBtn);
+                                buttonContainer.appendChild(rejectBtn);
+                                approvalSection.appendChild(buttonContainer);
+                                existingCard.appendChild(approvalSection);
+                            }
+                        } else {
+                            // Update existing approval buttons
+                            // Check if buttons actually exist
+                            if (approveBtn && rejectBtn) {
+                                approveBtn.textContent = `👍 Approve (${cardData.approvals || 0})`;
+                                rejectBtn.textContent = `👎 Reject (${cardData.rejections || 0})`;
+                            } else {
+                                // Buttons don't exist, need to create them
+                                const buttonContainer = document.createElement('div');
+                                buttonContainer.className = 'between flex';
+                                buttonContainer.style.gap = '8px';
+                                
+                                const newApproveBtn = document.createElement('button');
+                                newApproveBtn.className = 'btn btn-primary btn-small';
+                                newApproveBtn.textContent = `👍 Approve (${cardData.approvals || 0})`;
+                                newApproveBtn.addEventListener('click', async () => {
+                                    await handleApproval(cardData.submissionData, true, cardData.submissionId);
+                                });
+                                
+                                const newRejectBtn = document.createElement('button');
+                                newRejectBtn.className = 'btn btn-outline btn-small';
+                                newRejectBtn.setAttribute('data-reject', 'true');
+                                newRejectBtn.textContent = `👎 Reject (${cardData.rejections || 0})`;
+                                newRejectBtn.addEventListener('click', async () => {
+                                    await handleApproval(cardData.submissionData, false, cardData.submissionId);
+                                });
+                                
+                                buttonContainer.appendChild(newApproveBtn);
+                                buttonContainer.appendChild(newRejectBtn);
+                                approvalSection.appendChild(buttonContainer);
+                            }
+                            
+                            if (approvalSection) {
+                                // Update the approval count text
+                                const countDiv = approvalSection.querySelector('.muted');
+                                if (countDiv) {
+                                    countDiv.textContent = `Approvals needed: ${cardData.approvalCount || 0}/${cardData.totalVoters || 0}`;
+                                }
+                            }
                         }
-                        return; // Skip rendering this one
+                        return;
                     }
                     
-                    // If card exists but status changed (e.g., pending -> approved), replace it
-                    if (existingCard && cardData.submissionData && cardData.status !== 'pending') {
+                    // If card exists but status changed (from pending to approved/rejected), remove it and recreate
+                    if (existingCard) {
                         feedTab.removeChild(existingCard);
                         existingCard = null;
                     }
                     
-                    // If card doesn't exist, create it
+                    // Create new card
                     if (!existingCard) {
                         const card = document.createElement('div');
                         card.className = 'card stack';
@@ -1607,7 +1704,9 @@
 
                         // Approval buttons (only for pending submissions and not your own)
                         const currentUserId = app.getCurrentUser()?.uid || user.userId;
+                        
                         if (cardData.status === 'pending' && cardData.submissionData && cardData.submissionData.userId !== currentUserId) {
+
                             const approvalSection = document.createElement('div');
                             approvalSection.style.marginTop = '12px';
                             approvalSection.setAttribute('data-approval-section', 'true');
@@ -1662,10 +1761,11 @@
                             card.appendChild(statusInfo);
                         }
 
+                        // Append to DOM immediately (no fragment - cards render as they're created)
                         feedTab.appendChild(card);
                     }
                 });
-        };
+            };
 
         // --- Ranking Tab ---
             const renderRanking = () => {
@@ -1739,13 +1839,15 @@
                     
                     // Count tasks completed (each submission is one task)
                     const tasksCompleted = userSubmissions.length;
-                    const totalTasks = oneDayState?.tasks?.length || 0;
+                    // Use the PARTICIPANT'S goals, not the current user's goals
+                    const totalTasks = (p.goals && p.goals.length) ? p.goals.length : 0;
                     const percentage = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
                     
                     console.log(`📊 Oneday ranking for ${p.nickname}:`, {
                         userId: p.userId,
                         tasksCompleted,
                         totalTasks,
+                        participantGoals: p.goals ? p.goals.length : 0,
                         percentage: Math.round(percentage),
                         approvedOnDeadlineDate: userSubmissions.length,
                         referenceDate: oneDayReferenceDate
@@ -1823,6 +1925,11 @@
             const initialize = async () => {
                 // Load initial Firebase data first
                 await loadFirebaseData();
+                
+                // Generate feed data with loaded Firebase submissions
+                const newFeedData = generateFeedData();
+                feedData.length = 0;
+                feedData.push(...newFeedData);
                 
                 // Then render UI with fresh data
                 console.log('🎬 Initialize called with mode:', mode);
@@ -1987,7 +2094,7 @@
                                     winner: leader ? {
                                         nickname: leader.nickname,
                                         userId: leader.userId,
-                                        points: leader.calculatedPoints || 0
+                                        points: mode === 'oneday' ? Math.round(leader.calculatedScore) : leader.calculatedScore
                                     } : null
                                 };
                                 

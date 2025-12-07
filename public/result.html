@@ -24,11 +24,6 @@
                 <button id="rematchBtn" class="btn btn-primary">Rematch</button>
                 <button class="btn btn-outline" onclick="window.location.href='lobby.html'">Back to Lobby</button>
             </div>
-
-            <div id="piggyBankSection" class="card stack" style="margin-top: 20px; text-align: center; display: none;">
-                <div id="userColorDisplay" style="width: 80px; height: 80px; border-radius: 50%; margin: 0 auto; border: 3px solid var(--border); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);"></div>
-                <p id="piggyMessage" style="margin-top: 16px; font-size: 16px; line-height: 1.5;"></p>
-            </div>
         </div>
     </main>
 
@@ -95,9 +90,6 @@
             const winnerTitle = document.getElementById('winnerTitle');
             const winnerDesc = document.getElementById('winnerDesc');
             const rematchBtn = document.getElementById('rematchBtn');
-            const piggyBankSection = document.getElementById('piggyBankSection');
-            const userColorDisplay = document.getElementById('userColorDisplay');
-            const piggyMessage = document.getElementById('piggyMessage');
 
             console.log('Elements found:', { winnerTitle, winnerDesc, rematchBtn });
 
@@ -127,7 +119,7 @@
                         } else {
                             // Calculate winner from current data
                             console.log('🔢 Calculating winner from current competition data...');
-                            winnerData = calculateWinner(firebaseRoom);
+                            winnerData = calculateWinner(firebaseRoom, firebaseRoom.mode);
                         }
                         
                         console.log('🎯 Final winner data:', winnerData);
@@ -141,7 +133,7 @@
             }
             
             // Function to calculate winner from room data
-            function calculateWinner(roomData) {
+            function calculateWinner(roomData, mode = 'routine') {
                 if (!roomData || !roomData.participants) {
                     console.warn('❌ Missing room data for winner calculation');
                     return null;
@@ -151,6 +143,7 @@
                 const submissions = roomData.submissions ? Object.values(roomData.submissions) : [];
                 
                 console.log('📈 Calculating winner from:', {
+                    mode,
                     participantCount: participants.length,
                     submissionCount: submissions.length,
                     participants: participants.map(p => ({
@@ -160,51 +153,102 @@
                     }))
                 });
                 
-                // Calculate points for each participant from approved submissions
-                const participantPoints = participants.map(participant => {
-                    const userSubmissions = submissions.filter(sub => 
-                        sub.userId === participant.userId && sub.status === 'approved'
-                    );
+                // Calculate score for each participant based on mode
+                const participantScores = participants.map(participant => {
+                    let score = 0;
+                    let displayScore = 0;
                     
-                    const totalPoints = userSubmissions.reduce((total, sub) => {
-                        return total + (sub.task?.points || 10);
-                    }, 0);
+                    if (mode === 'oneday') {
+                        // For oneday missions, calculate percentage of tasks completed
+                        // Match the exact logic from room.html ranking calculation
+                        const oneDayReferenceDate = new Date(roomData.dday).toDateString();
+                        
+                        // Get ALL submissions for this user on the deadline date
+                        const allDeadlineSubmissions = submissions.filter(sub => 
+                            sub.userId === participant.userId && 
+                            new Date(sub.submittedAt).toDateString() === oneDayReferenceDate
+                        );
+                        
+                        // Count only APPROVED submissions
+                        const userSubmissions = allDeadlineSubmissions.filter(sub => sub.status === 'approved');
+                        
+                        // Count tasks completed (each APPROVED submission is one task)
+                        const tasksCompleted = userSubmissions.length;
+                        // Use the PARTICIPANT'S goals
+                        const totalTasks = (participant.goals && participant.goals.length) ? participant.goals.length : 0;
+                        score = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
+                        displayScore = Math.round(score);
+                        
+                        console.log(`📊 Oneday winner calc for ${participant.nickname}:`, {
+                            userId: participant.userId,
+                            dday: roomData.dday,
+                            oneDayReferenceDate,
+                            allDeadlineSubmissionsCount: allDeadlineSubmissions.length,
+                            allDeadlineSubmissions: allDeadlineSubmissions.map(s => ({
+                                status: s.status,
+                                taskIdx: s.task?.idx,
+                                submittedAt: s.submittedAt
+                            })),
+                            approvedSubmissionsCount: userSubmissions.length,
+                            tasksCompleted,
+                            totalTasks,
+                            participantGoals: participant.goals,
+                            percentage: displayScore,
+                            calculation: `${tasksCompleted}/${totalTasks} * 100 = ${displayScore}%`
+                        });
+                    } else {
+                        // For routine missions, calculate points from approved submissions
+                        const userSubmissions = submissions.filter(sub => 
+                            sub.userId === participant.userId && sub.status === 'approved'
+                        );
+                        
+                        score = userSubmissions.reduce((total, sub) => {
+                            return total + (sub.task?.points || 10);
+                        }, 0);
+                        displayScore = score;
+                        
+                        console.log(`📊 Routine winner calc for ${participant.nickname}:`, {
+                            submissionCount: userSubmissions.length,
+                            totalPoints: displayScore
+                        });
+                    }
                     
                     return {
                         ...participant,
-                        points: totalPoints,
-                        submissionCount: userSubmissions.length
+                        score,
+                        displayScore,
+                        submissionCount: submissions.filter(s => s.userId === participant.userId && s.status === 'approved').length
                     };
                 });
                 
-                // Sort by points to find winner
-                participantPoints.sort((a, b) => b.points - a.points);
+                // Sort by score to find winner
+                participantScores.sort((a, b) => b.score - a.score);
                 
-                console.log('🏆 Participant rankings:', participantPoints.map((p, idx) => ({
+                console.log('🏆 Participant rankings:', participantScores.map((p, idx) => ({
                     rank: idx + 1,
                     nickname: p.nickname,
-                    points: p.points,
+                    score: p.displayScore,
                     color: p.color,
                     submissionCount: p.submissionCount
                 })));
                 
-                const winner = participantPoints[0];
-                const hasCompetition = winner && winner.points > 0 && participantPoints.some(p => p.points < winner.points);
-                const isSingleParticipant = participantPoints.length === 1;
+                const winner = participantScores[0];
+                const hasCompetition = winner && winner.score > 0 && participantScores.some(p => p.score < winner.score);
+                const isSingleParticipant = participantScores.length === 1;
                 
                 console.log('🔍 Winner determination check:', {
-                    winner: winner ? { nickname: winner.nickname, points: winner.points } : null,
+                    winner: winner ? { nickname: winner.nickname, score: winner.displayScore } : null,
                     hasCompetition,
                     isSingleParticipant,
-                    participantCount: participantPoints.length,
-                    allParticipantPoints: participantPoints.map(p => ({ nickname: p.nickname, points: p.points }))
+                    participantCount: participantScores.length,
+                    allParticipantScores: participantScores.map(p => ({ nickname: p.nickname, score: p.displayScore }))
                 });
                 
                 // Return winner if there's competition, or if they're the only participant
                 if (hasCompetition || isSingleParticipant) {
                     console.log('🎉 Winner determined:', {
                         nickname: winner.nickname,
-                        points: winner.points,
+                        score: winner.displayScore,
                         color: winner.color,
                         userId: winner.userId,
                         reason: isSingleParticipant ? 'sole participant' : 'competition winner'
@@ -212,7 +256,7 @@
                     return {
                         nickname: winner.nickname,
                         userId: winner.userId,
-                        points: winner.points,
+                        points: winner.displayScore,
                         color: winner.color
                     };
                 } else {
@@ -247,8 +291,16 @@
             if (winnerData && winnerData.nickname) {
                 console.log('🎨 Displaying winner with color:', winnerData.color);
                 
+                // Check if current user is the winner
+                const userIsWinner = winnerData.userId === user.userId;
+                
                 if (winnerTitle) {
-                    winnerTitle.textContent = `${winnerData.nickname} wins!`;
+                    if (userIsWinner) {
+                        winnerTitle.textContent = 'You won! 🎉';
+                    } else {
+                        winnerTitle.textContent = `${winnerData.nickname} wins!`;
+                    }
+                    
                     // Add winner's color as background accent
                     if (winnerData.color) {
                         winnerTitle.style.background = `linear-gradient(135deg, ${winnerData.color}, ${winnerData.color}cc)`;
@@ -260,8 +312,33 @@
                 }
                 
                 if (winnerDesc) {
-                    const pointsText = winnerData.points ? ` with ${winnerData.points} points` : '';
-                    winnerDesc.textContent = `🎉 Congratulations${pointsText}! Set up a new challenge and keep the streak.`;
+                    let message = '';
+                    if (winnerData.points !== undefined) {
+                        if (userIsWinner) {
+                            // Winner sees their own achievement
+                            if (competitionData?.mode === 'oneday') {
+                                message = `🎉 Congratulations! You completed ${winnerData.points}% of the tasks.`;
+                            } else {
+                                message = `🎉 Congratulations! You earned ${winnerData.points} points.`;
+                            }
+                        } else {
+                            // Non-winner sees the winner's achievement without "Congratulations"
+                            if (competitionData?.mode === 'oneday') {
+                                message = `${winnerData.nickname} completed ${winnerData.points}% of the tasks.`;
+                            } else {
+                                message = `${winnerData.nickname} earned ${winnerData.points} points.`;
+                            }
+                        }
+                    } else {
+                        message = 'Great effort!';
+                    }
+                    
+                    // Add competitive/motivating call to action
+                    const ctaMessage = userIsWinner 
+                        ? ' Ready for another round? Challenge them again!' 
+                        : ' Time for a rematch! Show them what you\'ve got!';
+                    
+                    winnerDesc.textContent = message + ctaMessage;
                 }
             } else {
                 // Fallback display
@@ -278,45 +355,7 @@
             // Display user's color with piggy bank message - only if user won
             const userIsWinner = winnerData && winnerData.userId === user.userId;
             
-            console.log('🐷 Piggy bank section check:', {
-                hasWinnerData: !!winnerData,
-                winnerDataDetails: winnerData ? { nickname: winnerData.nickname, userId: winnerData.userId } : null,
-                currentUser: { userId: user.userId, nickname: user.nickname },
-                userIsWinner,
-                hasPiggyBankSection: !!piggyBankSection,
-                hasUserColorDisplay: !!userColorDisplay,
-                hasPiggyMessage: !!piggyMessage
-            });
-            
-            // Get user's color from the competition data if available
-            let userColor = null;
-            if (competitionData && competitionData.participants) {
-                const userParticipant = Object.values(competitionData.participants).find(p => p.userId === user.userId);
-                userColor = userParticipant?.color;
-                console.log('🐷 User color from competition data:', {
-                    found: !!userParticipant,
-                    color: userColor,
-                    userId: user.userId
-                });
-            }
-            
-            // Fallback to room color from localStorage
-            if (!userColor) {
-                userColor = room?.color;
-                console.log('🐷 User color from localStorage:', userColor);
-            }
-            
-            if (userColor && piggyBankSection && userColorDisplay && piggyMessage && userIsWinner) {
-                userColorDisplay.style.background = userColor;
-                
-                // Display color information without revealing the winner
-                piggyMessage.innerHTML = `<strong>Your Piggy Bank Color</strong><br><span style="font-size: 14px; color: var(--muted);">Check the piggy bank so see if you have won!</span>`;
-                
-                // Now that content is set, show the section
-                piggyBankSection.style.display = 'flex';
-                
-                console.log('🐷 Piggy bank color section displayed:', userColor);
-            }
+            console.log('🎉 User won this competition:', userIsWinner);
 
             // Hide loading state and show content
             loadingState.style.display = 'none';
