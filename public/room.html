@@ -485,15 +485,56 @@
                 return hasCompetition ? sorted[0] : null;
             };
             
+            // Update leader in Firebase for real-time tracking (for IoT devices, etc.)
+            const updateLeaderInFirebase = async (leaderData) => {
+                if (!roomData.id || !leaderData) {
+                    // Clear leader if no competition
+                    if (roomData.id && !leaderData) {
+                        try {
+                            await app.updateRoom(roomData.id, { currentLeader: null });
+                        } catch (error) {
+                            console.warn('Failed to clear leader:', error);
+                        }
+                    }
+                    return;
+                }
+                
+                try {
+                    await app.updateRoom(roomData.id, {
+                        currentLeader: {
+                            nickname: leaderData.nickname,
+                            userId: leaderData.userId,
+                            color: leaderData.color,
+                            score: leaderData.calculatedScore,
+                            scoreType: leaderData.scoreType,
+                            updatedAt: Date.now()
+                        }
+                    });
+                    console.log('✅ Leader updated in Firebase:', leaderData.nickname, '-', leaderData.calculatedScore, leaderData.scoreType);
+                } catch (error) {
+                    console.warn('Failed to update leader in Firebase:', error);
+                }
+            };
+            
             // Define renderRanking before it's called
             let renderRanking;
             
             const refreshRanking = () => {
                 // Always update ranking data for real-time updates
                 if (renderRanking) renderRanking();
+                
+                // Update leader in Firebase for IoT/external access
+                const leaderData = getLeader();
+                updateLeaderInFirebase(leaderData);
             };
             
             const updateFeed = () => {
+                // Check if generateFeedData is defined before calling
+                if (typeof generateFeedData !== 'function') {
+                    console.warn('generateFeedData not yet defined');
+                    return;
+                }
+                
                 // Always regenerate and render feed data - this ensures it updates automatically
                 const newFeedData = generateFeedData();
                 feedData.length = 0;
@@ -578,7 +619,11 @@
             updateParticipantCount();
             
             // Load Firebase data asynchronously
-            loadFirebaseData();
+            await loadFirebaseData();
+            
+            // Initialize leader in Firebase after data is loaded
+            const initialLeader = getLeader();
+            await updateLeaderInFirebase(initialLeader);
             
             // Set up real-time updates
             setupRealTimeUpdates();
