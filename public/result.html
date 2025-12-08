@@ -132,7 +132,15 @@
                     let displayScore = 0;
                     
                     if (mode === 'oneday') {
-                        // For oneday: calculate percentage of tasks completed on deadline day
+                        // For oneday: calculate percentage based on total minutes completed
+                        const participantGoals = participant.goals || [];
+                        
+                        // Calculate total expected minutes from all goals
+                        const totalExpectedMinutes = participantGoals.reduce((sum, goal) => {
+                            return sum + (goal.minutes || 0);
+                        }, 0);
+                        
+                        // Get approved submissions on D-Day
                         const oneDayReferenceDate = new Date(roomData.dday).toDateString();
                         const userSubmissions = submissions.filter(sub => 
                             sub.userId === participant.userId && 
@@ -140,9 +148,16 @@
                             new Date(sub.submittedAt).toDateString() === oneDayReferenceDate
                         );
                         
-                        const tasksCompleted = userSubmissions.length;
-                        const totalTasks = (participant.goals && participant.goals.length) ? participant.goals.length : 0;
-                        score = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
+                        // Calculate completed minutes from approved submissions
+                        const completedMinutes = userSubmissions.reduce((sum, sub) => {
+                            const taskMinutes = sub.task?.minutes || 0;
+                            return sum + taskMinutes;
+                        }, 0);
+                        
+                        // Calculate completion rate
+                        score = totalExpectedMinutes > 0 
+                            ? (completedMinutes / totalExpectedMinutes) * 100 
+                            : 0;
                         displayScore = Math.round(score);
                     } else {
                         // For routine: calculate points from approved submissions

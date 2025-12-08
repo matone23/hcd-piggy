@@ -447,17 +447,40 @@
                 // Calculate scores based on mode
                 const participantsWithScores = participants.map(p => {
                     if (mode === 'oneday') {
-                        // For oneday: calculate percentage of tasks completed
+                        // For oneday: calculate percentage based on total minutes completed
+                        const participantGoals = p.goals || [];
+                        
+                        // Calculate total expected minutes from all goals
+                        const totalExpectedMinutes = participantGoals.reduce((sum, goal) => {
+                            return sum + (goal.minutes || 0);
+                        }, 0);
+                        
+                        // Get approved submissions on D-Day
                         const oneDayReferenceDate = new Date(roomData.dday).toDateString();
                         const userSubmissions = Object.values(roomData.submissions || {}).filter(s => 
                             s.userId === p.userId && 
                             s.status === 'approved' &&
                             new Date(s.submittedAt).toDateString() === oneDayReferenceDate
                         );
-                        const tasksCompleted = userSubmissions.length;
-                        const totalTasks = (p.goals && p.goals.length) ? p.goals.length : 0;
-                        const percentage = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
-                        return { ...p, calculatedScore: percentage, scoreType: 'percentage' };
+                        
+                        // Calculate completed minutes from approved submissions
+                        const completedMinutes = userSubmissions.reduce((sum, sub) => {
+                            const taskMinutes = sub.task?.minutes || 0;
+                            return sum + taskMinutes;
+                        }, 0);
+                        
+                        // Calculate completion rate
+                        const completionRate = totalExpectedMinutes > 0 
+                            ? (completedMinutes / totalExpectedMinutes) * 100 
+                            : 0;
+                        
+                        return { 
+                            ...p, 
+                            calculatedScore: completionRate, 
+                            scoreType: 'percentage',
+                            completedMinutes,
+                            totalExpectedMinutes
+                        };
                     } else {
                         // For routine: calculate points from approved submissions
                         const userSubmissions = Object.values(roomData.submissions || {}).filter(s => 
@@ -487,18 +510,23 @@
             
             // Update leader in Firebase for real-time tracking (for IoT devices, etc.)
             const updateLeaderInFirebase = async (leaderData) => {
-                if (!roomData.id || !leaderData) {
-                    // Clear leader if no competition
-                    if (roomData.id && !leaderData) {
-                        try {
-                            await app.updateRoom(roomData.id, { currentLeader: null });
-                        } catch (error) {
-                            console.warn('Failed to clear leader:', error);
-                        }
+                if (!roomData.id) {
+                    console.warn('No room ID, cannot update leader');
+                    return;
+                }
+                
+                // If no leader (everyone at 0 or tie), set to null
+                if (!leaderData) {
+                    try {
+                        await app.updateRoom(roomData.id, { currentLeader: null });
+                        console.log('✅ Leader cleared in Firebase (no competition yet)');
+                    } catch (error) {
+                        console.warn('Failed to clear leader:', error);
                     }
                     return;
                 }
                 
+                // Update with actual leader data
                 try {
                     await app.updateRoom(roomData.id, {
                         currentLeader: {
@@ -1844,17 +1872,30 @@
                         new Date(s.submittedAt).toDateString() === oneDayReferenceDate
                     );
                     
-                    // Count tasks completed (each submission is one task)
+                    // Calculate based on minutes, not task count
+                    const participantGoals = p.goals || [];
+                    const totalExpectedMinutes = participantGoals.reduce((sum, goal) => {
+                        return sum + (goal.minutes || 0);
+                    }, 0);
+                    
+                    const completedMinutes = userSubmissions.reduce((sum, sub) => {
+                        const taskMinutes = sub.task?.minutes || 0;
+                        return sum + taskMinutes;
+                    }, 0);
+                    
+                    const percentage = totalExpectedMinutes > 0 
+                        ? (completedMinutes / totalExpectedMinutes) * 100 
+                        : 0;
+                    
                     const tasksCompleted = userSubmissions.length;
-                    // Use the PARTICIPANT'S goals, not the current user's goals
-                    const totalTasks = (p.goals && p.goals.length) ? p.goals.length : 0;
-                    const percentage = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
+                    const totalTasks = participantGoals.length;
                     
                     console.log(`📊 Oneday ranking for ${p.nickname}:`, {
                         userId: p.userId,
                         tasksCompleted,
                         totalTasks,
-                        participantGoals: p.goals ? p.goals.length : 0,
+                        completedMinutes,
+                        totalExpectedMinutes,
                         percentage: Math.round(percentage),
                         approvedOnDeadlineDate: userSubmissions.length,
                         referenceDate: oneDayReferenceDate

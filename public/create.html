@@ -160,11 +160,14 @@
                     
                     const roomData = {
                         name,
-                        description: `${formState.mode} room for ${formState.duration} days`,
+                        description: formState.mode === 'routine' 
+                            ? `${formState.mode} room for ${formState.duration} days`
+                            : `One-day challenge on ${formState.dday}`,
                         mode: formState.mode,
                         duration: formState.duration,
                         dday: formState.dday,
-                        owner: user.nickname
+                        owner: user.nickname,
+                        currentLeader: null  // Initialize leader field for IoT tracking
                     };
 
                     const room = await app.createRoom(roomData);
