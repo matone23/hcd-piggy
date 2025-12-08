@@ -485,9 +485,12 @@
                 return hasCompetition ? sorted[0] : null;
             };
             
+            // Define renderRanking before it's called
+            let renderRanking;
+            
             const refreshRanking = () => {
                 // Always update ranking data for real-time updates
-                renderRanking();
+                if (renderRanking) renderRanking();
             };
             
             const updateFeed = () => {
@@ -806,6 +809,9 @@
                     searchNickname: user.nickname
                 });
             }
+            
+            // Get current user ID for submission checks
+            const currentUserId = app.getCurrentUser()?.uid || user.userId;
             
             // Check user's submission status for today
             const todaySubmissions = roomData.submissions ? 
@@ -1724,7 +1730,7 @@
             };
 
         // --- Ranking Tab ---
-            const renderRanking = () => {
+            renderRanking = () => {
                 if (!rankTab) {
                     console.warn('⚠️ Ranking tab not found');
                     return;
