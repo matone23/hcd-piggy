@@ -245,11 +245,11 @@
                     <div class="stack">
                         <div>
                             <div class="badge" style="background: rgba(100,100,100,0.2); color: var(--muted);">Completed</div>
-                            <h1 style="margin: 8px 0 4px;">${activeRoom.name || 'Completed Competition'}</h1>
+                            <h1 style="margin: 8px 0 4px;">${freshRoomData.name || 'Completed Competition'}</h1>
                             <p style="margin: 4px 0; color: var(--muted);">This competition has ended.</p>
                             <div class="muted" style="font-size: 14px;">
-                                Room Code: <strong>${activeRoom.id}</strong> • 
-                                ${activeRoom.participants ? Object.keys(activeRoom.participants).length : 1} participant(s)
+                                Room Code: <strong>${freshRoomData.id}</strong> • 
+                                ${freshRoomData.participants ? Object.keys(freshRoomData.participants).length : 1} participant(s)
                             </div>
                         </div>
                         <button class="btn btn-outline" id="viewResultsBtn">
@@ -263,12 +263,9 @@
                 // Add click handler for view results
                 const viewResultsBtn = endedRoomCard.querySelector('#viewResultsBtn');
                 viewResultsBtn?.addEventListener('click', () => {
-                    localStorage.setItem('piggy-habit-room', JSON.stringify(activeRoom));
+                    localStorage.setItem('piggy-habit-room', JSON.stringify(freshRoomData));
                     window.location.href = 'result.html';
                 });
-                
-                // Don't clear active room yet - keep it to show after reload
-                // Only clear when user explicitly creates/joins a new room
                 
                 // Enable creating/joining new rooms
                 createRoomCard.style.opacity = '1';
