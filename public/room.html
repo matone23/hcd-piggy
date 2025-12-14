@@ -1722,6 +1722,68 @@
                             imgContainer.appendChild(img);
                             card.appendChild(imgContainer);
                         }
+                        
+                        // Emoji reactions (for all submissions, including your own)
+                        if (cardData.isSubmission) {
+                            const currentUserId = app.getCurrentUser()?.uid || user.userId;
+                            const reactions = cardData.submissionData?.reactions || {};
+                            const emojis = ['🔥', '❤️', '😂', '😱'];
+                            
+                            const reactionBar = document.createElement('div');
+                            reactionBar.style.cssText = 'display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);';
+                            
+                            emojis.forEach(emoji => {
+                                const userIds = reactions[emoji] || [];
+                                const count = userIds.length;
+                                const hasReacted = userIds.includes(currentUserId);
+                                
+                                const reactionBtn = document.createElement('button');
+                                reactionBtn.style.cssText = `
+                                    padding: 6px 10px;
+                                    border-radius: 16px;
+                                    border: 1px solid ${hasReacted ? 'var(--primary)' : 'var(--border)'};
+                                    background: ${hasReacted ? '#d4f4dd' : 'white'};
+                                    cursor: pointer;
+                                    font-size: 14px;
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 4px;
+                                    transition: all 0.2s;
+                                `;
+                                reactionBtn.innerHTML = `${emoji}${count > 0 ? ` <span style="font-size: 12px; font-weight: 600; color: #333;">${count}</span>` : ''}`;
+                                
+                                reactionBtn.addEventListener('click', async () => {
+                                    const newReactions = { ...reactions };
+                                    if (!newReactions[emoji]) newReactions[emoji] = [];
+                                    
+                                    if (hasReacted) {
+                                        newReactions[emoji] = newReactions[emoji].filter(id => id !== currentUserId);
+                                        if (newReactions[emoji].length === 0) delete newReactions[emoji];
+                                    } else {
+                                        newReactions[emoji].push(currentUserId);
+                                    }
+                                    
+                                    try {
+                                        await app.updateRoom(roomData.id, {
+                                            [`submissions/${cardData.submissionId}/reactions`]: newReactions
+                                        });
+                                    } catch (error) {
+                                        console.error('Error updating reaction:', error);
+                                    }
+                                });
+                                
+                                reactionBtn.addEventListener('mouseenter', () => {
+                                    reactionBtn.style.transform = 'scale(1.1)';
+                                });
+                                reactionBtn.addEventListener('mouseleave', () => {
+                                    reactionBtn.style.transform = 'scale(1)';
+                                });
+                                
+                                reactionBar.appendChild(reactionBtn);
+                            });
+                            
+                            card.appendChild(reactionBar);
+                        }
 
                         // Suspicion button (only for approved submissions and not your own)
                         const currentUserId = app.getCurrentUser()?.uid || user.userId;
