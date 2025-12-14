@@ -75,6 +75,113 @@
     <div id="toast" role="status" aria-live="polite"></div>
     <input id="fileCapture" type="file" accept="image/*" capture="environment" style="display:none;">
 
+    <!-- How to Play Modal -->
+    <div id="howToPlayModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 10000; overflow-y: auto; padding: 20px;">
+        <div style="max-width: 480px; margin: 0 auto; background: var(--card-bg); border-radius: var(--radius-lg); padding: 24px; position: relative;">
+            <button id="closeHowToPlay" style="position: absolute; top: 16px; right: 16px; background: transparent; border: none; color: var(--muted); font-size: 24px; cursor: pointer; padding: 4px 8px;">×</button>
+            
+            <div style="text-align: center; margin-bottom: 24px;">
+                <div style="font-size: 32px; margin-bottom: 8px;">🎮</div>
+                <div style="font-weight: 800; font-size: 20px; color: var(--text);">How to Play</div>
+            </div>
+
+            <!-- Routine Mode Content -->
+            <div id="routineModeGuide" style="display: none;">
+                <div style="margin-bottom: 20px;">
+                    <div style="font-weight: 700; font-size: 16px; color: var(--primary); margin-bottom: 8px;">🔥 My Mission Tab</div>
+                    <div style="font-size: 14px; color: var(--muted); line-height: 1.6;">
+                        Upload ONE daily proof photo and choose your intensity based on effort.
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <div style="font-weight: 700; font-size: 16px; color: var(--primary); margin-bottom: 8px;">💯 Intensity Levels</div>
+                    <div style="font-size: 14px; color: var(--muted); line-height: 1.6;">
+                        <strong>Min:</strong> 2 points (light effort)<br>
+                        <strong>More:</strong> 5 points (moderate effort)<br>
+                        <strong>Max:</strong> 10 points (maximum effort)<br><br>
+                        Pick based on how hard you worked that day!
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <div style="font-weight: 700; font-size: 16px; color: var(--primary); margin-bottom: 8px;">👀 Feed Tab</div>
+                    <div style="font-size: 14px; color: var(--muted); line-height: 1.6;">
+                        See everyone's submissions. All submissions are <strong>auto-approved</strong> by default.
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <div style="font-weight: 700; font-size: 16px; color: var(--accent); margin-bottom: 8px;">🚨 Raise Suspicion</div>
+                    <div style="font-size: 14px; color: var(--muted); line-height: 1.6;">
+                        Think someone's proof looks fake? Click <strong>"🚨 Raise Suspicion"</strong>. If <strong>ALL other players</strong> raise suspicion, the submission gets rejected.
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <div style="font-weight: 700; font-size: 16px; color: var(--primary); margin-bottom: 8px;">🏆 Ranking Tab</div>
+                    <div style="font-size: 14px; color: var(--muted); line-height: 1.6;">
+                        Ranked by total points earned. Highest score when time ends wins! 👑
+                    </div>
+                </div>
+
+                <div>
+                    <div style="font-weight: 700; font-size: 16px; color: var(--primary); margin-bottom: 8px;">😊 Emoji Reactions</div>
+                    <div style="font-size: 14px; color: var(--muted); line-height: 1.6;">
+                        React to submissions with 🔥❤️😂😱 emojis!
+                    </div>
+                </div>
+            </div>
+
+            <!-- 1-Day Mode Content -->
+            <div id="oneDayModeGuide" style="display: none;">
+                <div style="margin-bottom: 20px;">
+                    <div style="font-weight: 700; font-size: 16px; color: var(--primary); margin-bottom: 8px;">🔥 My Mission Tab</div>
+                    <div style="font-size: 14px; color: var(--muted); line-height: 1.6;">
+                        Check off tasks as you complete them and upload proof photos.
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <div style="font-weight: 700; font-size: 16px; color: var(--primary); margin-bottom: 8px;">📊 Completion Rate</div>
+                    <div style="font-size: 14px; color: var(--muted); line-height: 1.6;">
+                        Your score is calculated based on the time estimates you set for each task and what you actually complete.
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <div style="font-weight: 700; font-size: 16px; color: var(--primary); margin-bottom: 8px;">👀 Feed Tab</div>
+                    <div style="font-size: 14px; color: var(--muted); line-height: 1.6;">
+                        See everyone's submissions. All submissions are <strong>auto-approved</strong> by default.
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <div style="font-weight: 700; font-size: 16px; color: var(--accent); margin-bottom: 8px;">🚨 Raise Suspicion</div>
+                    <div style="font-size: 14px; color: var(--muted); line-height: 1.6;">
+                        Think someone's proof looks fake? Click <strong>"🚨 Raise Suspicion"</strong>. If <strong>ALL other players</strong> raise suspicion, the submission gets rejected.
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <div style="font-weight: 700; font-size: 16px; color: var(--primary); margin-bottom: 8px;">🏆 Ranking Tab</div>
+                    <div style="font-size: 14px; color: var(--muted); line-height: 1.6;">
+                        Ranked by completion percentage. Highest % when day ends wins! 👑
+                    </div>
+                </div>
+
+                <div>
+                    <div style="font-weight: 700; font-size: 16px; color: var(--primary); margin-bottom: 8px;">😊 Emoji Reactions</div>
+                    <div style="font-size: 14px; color: var(--muted); line-height: 1.6;">
+                        React to submissions with 🔥❤️😂😱 emojis!
+                    </div>
+                </div>
+            </div>
+
+            <button id="gotItBtn" class="btn btn-primary" style="width: 100%; margin-top: 24px;">Got it! 🚀</button>
+        </div>
+    </div>
+
     <style>
         @keyframes spin {
             to { transform: rotate(360deg); }
@@ -2000,6 +2107,63 @@
                 });
             };
 
+            // How to Play Modal Logic
+            function showHowToPlayIfNeeded() {
+                if (!roomData || !roomData.id) {
+                    console.warn('Cannot show tutorial: roomData or roomData.id is missing', roomData);
+                    return;
+                }
+
+                const storageKey = `piggy-howtoplay-seen-${roomData.id}`;
+                const hasSeenTutorial = localStorage.getItem(storageKey);
+
+                // Always hide both guides first
+                const routineModeGuide = document.getElementById('routineModeGuide');
+                const oneDayModeGuide = document.getElementById('oneDayModeGuide');
+                if (routineModeGuide) routineModeGuide.style.display = 'none';
+                if (oneDayModeGuide) oneDayModeGuide.style.display = 'none';
+
+                // Normalize mode string
+                const normalizedMode = (mode || '').toLowerCase();
+                console.log('Tutorial check:', { storageKey, hasSeenTutorial, roomId: roomData.id, mode, normalizedMode });
+
+                if (!hasSeenTutorial) {
+                    const modal = document.getElementById('howToPlayModal');
+                    let guideShown = null;
+                    if ((normalizedMode === 'routine') && routineModeGuide) {
+                        routineModeGuide.style.display = 'block';
+                        guideShown = 'routine';
+                    } else if ((normalizedMode === 'oneday') && oneDayModeGuide) {
+                        oneDayModeGuide.style.display = 'block';
+                        guideShown = 'oneday';
+                    } else {
+                        // fallback: show both if mode is unknown
+                        if (routineModeGuide) routineModeGuide.style.display = 'block';
+                        if (oneDayModeGuide) oneDayModeGuide.style.display = 'block';
+                        guideShown = 'both';
+                    }
+                    console.log('Showing tutorial modal', { modal: !!modal, mode, normalizedMode, guideShown });
+                    if (modal) {
+                        modal.style.display = 'block';
+                    }
+                }
+            }
+
+            // Close modal handlers
+            const closeHowToPlay = () => {
+                const modal = document.getElementById('howToPlayModal');
+                
+                if (roomData && roomData.id) {
+                    const storageKey = `piggy-howtoplay-seen-${roomData.id}`;
+                    localStorage.setItem(storageKey, 'true');
+                    console.log('Tutorial marked as seen:', storageKey);
+                }
+                
+                if (modal) {
+                    modal.style.display = 'none';
+                }
+            };
+
             // Initialize and start real-time updates
             const initialize = async () => {
                 // Load initial Firebase data first
@@ -2029,10 +2193,24 @@
                 if (loadingOverlay) {
                     loadingOverlay.style.display = 'none';
                 }
+
+                // Show "How to Play" modal on first visit
+                showHowToPlayIfNeeded();
             };
             
             // Start initialization
             initialize();
+
+            // Set up modal event listeners
+            document.getElementById('closeHowToPlay')?.addEventListener('click', closeHowToPlay);
+            document.getElementById('gotItBtn')?.addEventListener('click', closeHowToPlay);
+            
+            // Close modal when clicking outside
+            document.getElementById('howToPlayModal')?.addEventListener('click', (e) => {
+                if (e.target.id === 'howToPlayModal') {
+                    closeHowToPlay();
+                }
+            });
             
             console.log('Room page initialized successfully');
             
