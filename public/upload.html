@@ -318,9 +318,8 @@
                             submittedAt: Date.now(),
                             submittedBy: user.nickname,
                             userId: userId,
-                            status: 'pending',
-                            approvals: [],
-                            rejections: []
+                            status: 'approved',
+                            suspicions: []
                         };
                         
                         const submissionId = `${userId}_${Date.now()}`;

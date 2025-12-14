@@ -369,9 +369,10 @@
                         if (updatedRoomData.submissions) {
                             const newSubmissionData = JSON.stringify(updatedRoomData.submissions);
                             if (newSubmissionData !== oldSubmissionData) {
-                                console.log('📝 Submissions changed, updating feed and rankings');
+                                console.log('📝 Submissions changed, updating feed, rankings, and mission');
                                 if (typeof updateFeed === 'function') updateFeed();
                                 if (typeof refreshRanking === 'function') refreshRanking();
+                                if (typeof updateMissionTab === 'function') updateMissionTab();
                             }
                         }
                         
@@ -417,24 +418,25 @@
             // Helper functions for UI updates
             const updateParticipantCount = () => {
                 if (leaderBanner && participants.length > 0) {
-                    if (mode === 'routine') {
-                        const leader = getLeader();
-                        const iAmLeader = leader && leader.nickname === user.nickname;
-                        
-                        if (participants.length <= 1) {
-                            leaderBanner.textContent = `${participants.length} participant in room`;
-                        } else if (leader) {
+                    const leader = getLeader();
+                    const iAmLeader = leader && leader.nickname === user.nickname;
+                    
+                    if (participants.length <= 1) {
+                        leaderBanner.textContent = `${participants.length} participant in room`;
+                    } else if (leader) {
+                        if (mode === 'routine') {
                             leaderBanner.textContent = iAmLeader
                                 ? 'You are leading! Keep the pace!'
                                 : `👑 ${leader.nickname} is leading with ${leader.calculatedScore || 0} pts!`;
                         } else {
-                            leaderBanner.textContent = `${participants.length} participants in room`;
+                            // For oneday mode, show percentage
+                            const percentage = Math.round(leader.calculatedScore || 0);
+                            leaderBanner.textContent = iAmLeader
+                                ? `You are leading with ${percentage}% complete!`
+                                : `👑 ${leader.nickname} is leading with ${percentage}% complete!`;
                         }
                     } else {
-                        // For oneday mode, show participant count
-                        leaderBanner.textContent = participants.length === 1
-                            ? '1 participant in room'
-                            : `${participants.length} participants in room`;
+                        leaderBanner.textContent = `${participants.length} participants in room`;
                     }
                 }
             };
@@ -554,6 +556,9 @@
                 // Update leader in Firebase for IoT/external access
                 const leaderData = getLeader();
                 updateLeaderInFirebase(leaderData);
+                
+                // Update the header/leader banner
+                updateParticipantCount();
             };
             
             const updateFeed = () => {
@@ -572,6 +577,58 @@
                 // This ensures the feed is up-to-date when you switch to it
                 if (feedTab) {
                     renderFeed();
+                }
+            };
+            
+            const updateMissionTab = () => {
+                // Recalculate states based on fresh roomData
+                const currentUserId = app.getCurrentUser()?.uid || user.userId;
+                const today = new Date().toDateString();
+                
+                // Recalculate routine state
+                const todaySubmissions = roomData.submissions ? 
+                    Object.values(roomData.submissions).filter(sub => 
+                        sub.userId === currentUserId && 
+                        new Date(sub.submittedAt).toDateString() === today
+                    ) : [];
+                
+                const latestSubmission = todaySubmissions.length > 0 ? 
+                    todaySubmissions[todaySubmissions.length - 1] : null;
+                
+                if (mode === 'routine') {
+                    routineState.completed = latestSubmission?.status === 'approved';
+                    routineState.rejected = latestSubmission?.status === 'rejected';
+                    routineState.todayPoints = latestSubmission?.status === 'approved' ? (latestSubmission.task?.points || 0) : 0;
+                    renderRoutineMission();
+                } else if (mode === 'oneday') {
+                    // Recalculate oneday state
+                    const oneDayReferenceDate = (() => {
+                        if (mode === 'oneday' && roomData.dday) {
+                            const ddayDate = new Date(roomData.dday);
+                            return ddayDate.toDateString();
+                        }
+                        return new Date().toDateString();
+                    })();
+                    
+                    oneDayState.tasks = Array.isArray(goals) ? goals.map((g, idx) => {
+                        const deadlineSubmissions = roomData.submissions ? 
+                            Object.values(roomData.submissions).filter(s => 
+                                s.userId === currentUserId && 
+                                new Date(s.submittedAt).toDateString() === oneDayReferenceDate &&
+                                s.task?.idx === idx
+                            ) : [];
+                        const latestDeadlineSubmission = deadlineSubmissions.length > 0 ? 
+                            deadlineSubmissions[deadlineSubmissions.length - 1] : null;
+                        
+                        return { 
+                            text: g.text || `Task ${idx + 1}`,
+                            minutes: g.minutes || 0,
+                            done: latestDeadlineSubmission?.status === 'approved',
+                            rejected: latestDeadlineSubmission?.status === 'rejected',
+                            idx 
+                        };
+                    }) : [];
+                    renderOneDayMission();
                 }
             };
             
@@ -913,7 +970,6 @@
                 
             const routineState = {
                 completed: latestSubmission?.status === 'approved',
-                pending: latestSubmission?.status === 'pending',
                 rejected: latestSubmission?.status === 'rejected',
                 todayPoints: latestSubmission?.status === 'approved' ? (latestSubmission.task?.points || 0) : 0,
                 gap: iAmLeader ? 0 : Math.max(0, (leaderData?.calculatedPoints || 0) - currentUserPoints),
@@ -948,11 +1004,10 @@
                         text: g.text || `Task ${idx + 1}`,
                         minutes: g.minutes || 0,
                         done: latestDeadlineSubmission?.status === 'approved',
-                        pending: latestDeadlineSubmission?.status === 'pending',
                         rejected: latestDeadlineSubmission?.status === 'rejected',
                         idx 
                     };
-                    console.log(`Task ${idx} structure:`, { text: task.text, minutes: task.minutes, done: task.done, pending: task.pending });
+                    console.log(`Task ${idx} structure:`, { text: task.text, minutes: task.minutes, done: task.done, rejected: task.rejected });
                     return task;
                 }) : [],
             } : { tasks: [] };
@@ -1038,10 +1093,7 @@
                 // For oneday mode: allow multiple submissions (one per task) on the same day
                 if (mode === 'routine' && todayUserSubmissions.length > 0) {
                     const latestSubmission = todayUserSubmissions[todayUserSubmissions.length - 1];
-                    if (latestSubmission.status === 'pending') {
-                        app.showToast('You already have a submission pending approval today!');
-                        return;
-                    } else if (latestSubmission.status === 'approved') {
+                    if (latestSubmission.status === 'approved') {
                         app.showToast('You have already completed your mission today!');
                         return;
                     } else if (latestSubmission.status === 'rejected') {
@@ -1050,17 +1102,14 @@
                         app.showToast('Retrying after rejection. Upload your improved proof!');
                     }
                 } else if (mode === 'oneday') {
-                    // For oneday: check for pending or approved submission for THIS SPECIFIC TASK
+                    // For oneday: check for approved submission for THIS SPECIFIC TASK
                     const taskIdx = payload.idx;
                     const sameTaskSubmission = todayUserSubmissions.find(s => 
                         s.task?.idx === taskIdx
                     );
                     
                     if (sameTaskSubmission) {
-                        if (sameTaskSubmission.status === 'pending') {
-                            app.showToast('You already have this task pending approval. Wait for feedback!');
-                            return;
-                        } else if (sameTaskSubmission.status === 'approved') {
+                        if (sameTaskSubmission.status === 'approved') {
                             app.showToast('You have already completed this task!');
                             return;
                         } else if (sameTaskSubmission.status === 'rejected') {
@@ -1099,7 +1148,7 @@
             if (routineState.completed) {
                 const doneCard = document.createElement('div');
                 doneCard.className = 'card';
-                doneCard.textContent = '🎉 Today’s verification is complete!';
+                doneCard.textContent = '🎉 Today’s submission is complete!';
                 missionTab.appendChild(doneCard);
                 return;
             }
@@ -1168,12 +1217,7 @@
                 title.textContent = task.text || 'Task';
                 const meta = document.createElement('div');
                 meta.className = 'muted';
-                if (task.pending) {
-                    meta.textContent = `${task.minutes || 0} min • ⏳ Pending`;
-                    meta.style.color = '#FFA500';
-                } else {
-                    meta.textContent = `${task.minutes || 0} min`;
-                }
+                meta.textContent = `${task.minutes || 0} min`;
                 textWrap.appendChild(title);
                 textWrap.appendChild(meta);
 
@@ -1181,8 +1225,6 @@
                     title.style.textDecoration = 'line-through';
                     title.style.opacity = '0.6';
                     row.style.opacity = '0.6';
-                } else if (task.pending) {
-                    row.style.opacity = '0.7';
                 }
 
                 const badge = document.createElement('div');
@@ -1196,8 +1238,8 @@
                 row.appendChild(left);
                 list.appendChild(row);
 
-                // Click on the entire row to upload proof - but only if task not done and not pending
-                if (!task.done && !task.pending) {
+                // Click on the entire row to upload proof - but only if task not done
+                if (!task.done) {
                     row.addEventListener('click', () => triggerUpload({ ...task, idx: task.idx }));
                 } else {
                     row.style.cursor = 'not-allowed';
@@ -1217,11 +1259,20 @@
 
             // --- Feed Tab ---
             // Generate feed data from submissions instead of using static feed array
+            // Image cache to prevent reloading
+            const imageCache = new Map();
+            
             // Helper function to load image from different sources
             async function loadImageSrc(imageUrl) {
                 if (!imageUrl) {
                     console.log('⚠️ No imageUrl provided');
                     return null;
+                }
+                
+                // Check cache first
+                if (imageCache.has(imageUrl)) {
+                    console.log('✅ Using cached image:', imageUrl);
+                    return imageCache.get(imageUrl);
                 }
                 
                 console.log('🔍 Loading image:', imageUrl);
@@ -1238,6 +1289,7 @@
                         
                         if (imageData && imageData.data) {
                             console.log('✅ Database image loaded successfully');
+                            imageCache.set(imageUrl, imageData.data); // Cache it
                             return imageData.data;
                         } else {
                             console.warn('❌ No image data found in database for:', imageId);
@@ -1251,6 +1303,7 @@
                 
                 // Otherwise, it's a direct URL (Firebase Storage or external)
                 console.log('🔗 Using direct URL:', imageUrl);
+                imageCache.set(imageUrl, imageUrl); // Cache direct URLs too
                 return imageUrl;
             }
 
@@ -1314,23 +1367,16 @@
                                         timeAgo < 1440 ? `${Math.floor(timeAgo / 60)} hr ago` : 
                                         `${Math.floor(timeAgo / 1440)} day ago`;
                         
-                        // Count approvals from other participants (excluding the submitter)
-                        const approvalCount = (submission.approvals || []).filter(userId => userId !== submission.userId).length;
-                        const rejectionCount = (submission.rejections || []).filter(userId => userId !== submission.userId).length;
+                        // Count suspicions from other participants (excluding the submitter)
+                        const suspicionCount = (submission.suspicions || []).length;
                         const votersForThisSubmission = participants.filter(p => p.userId !== submission.userId).length;
                         
                         // Enhanced status badge - mode-aware formatting
                         let badge = 'Task';
                         if (submission.status === 'approved') {
-                            if (mode === 'oneday') {
-                                badge = 'Completed';
-                            } else {
-                                badge = `Approved (+${submission.task?.points || 0} pts)`;
-                            }
+                            badge = suspicionCount > 0 ? `Completed (${suspicionCount} 🚨)` : 'Completed';
                         } else if (submission.status === 'rejected') {
                             badge = 'Rejected';
-                        } else {
-                            badge = `Pending (${approvalCount}/${votersForThisSubmission} votes)`;
                         }
                         
                         // Get the task name - for oneday use 'text', for routine use 'desc'
@@ -1338,16 +1384,21 @@
                             ? (submission.task?.text || submission.task?.desc || 'task')
                             : (submission.task?.desc || 'task');
                         
+                        // Build text with points info for routine mode
+                        let cardText = submission.description || `${mode === 'oneday' ? '' : 'Completed: '}${taskName}`;
+                        if (mode === 'routine' && submission.status === 'approved') {
+                            const points = submission.task?.points || 0;
+                            cardText += ` (+${points} pts)`;
+                        }
+                        
                         feedData.push({
                             user: submission.submittedBy || 'Anonymous',
                             badge: badge,
-                            text: submission.description || `${mode === 'oneday' ? '' : 'Completed: '}${taskName}`,
+                            text: cardText,
                             time: timeText,
                             imageUrl: submission.imageUrl,
                             status: submission.status,
-                            approvals: approvalCount,
-                            rejections: rejectionCount,
-                            approvalCount: approvalCount,
+                            suspicions: suspicionCount,
                             totalVoters: votersForThisSubmission,
                             submissionData: submission,
                             submissionId: Object.keys(roomData.submissions).find(key => roomData.submissions[key] === submission),
@@ -1385,7 +1436,7 @@
             let feedData = [];
             let lastRenderedFeedIds = new Set(); // Track what we've already rendered
             
-            // Handle approval/rejection of submissions
+            // Handle suspicion voting on submissions
             const handleApproval = async (submission, isApproval, submissionId) => {
                 try {
                     const currentUserId = app.getCurrentUser()?.uid || user.userId;
@@ -1412,76 +1463,52 @@
                         return;
                     }
                     
-                    console.log('Processing approval for submission:', actualSubmissionId);
+                    console.log('Processing suspicion for submission:', actualSubmissionId);
                     
                     // Don't allow voting on own submissions
                     if (submission.userId === currentUserId) {
-                        app.showToast('You cannot vote on your own submission');
+                        app.showToast('You cannot raise suspicion on your own submission');
                         return;
                     }
                     
-                    // Initialize arrays if they don't exist
-                    const currentApprovals = submission.approvals || [];
-                    const currentRejections = submission.rejections || [];
+                    // Initialize suspicions array if it doesn't exist
+                    const currentSuspicions = submission.suspicions || [];
                     
-                    // Remove user from both arrays first (in case they're changing their vote)
-                    const newApprovals = currentApprovals.filter(uid => uid !== currentUserId);
-                    const newRejections = currentRejections.filter(uid => uid !== currentUserId);
-                    
-                    // Add to appropriate array
-                    if (isApproval) {
-                        newApprovals.push(currentUserId);
-                        app.showToast('Vote submitted: Approved');
+                    // Toggle suspicion - if user already raised suspicion, remove it; otherwise add it
+                    let newSuspicions;
+                    if (currentSuspicions.includes(currentUserId)) {
+                        newSuspicions = currentSuspicions.filter(uid => uid !== currentUserId);
+                        app.showToast('Suspicion removed');
                     } else {
-                        newRejections.push(currentUserId);
-                        app.showToast('Vote submitted: Rejected');
+                        newSuspicions = [...currentSuspicions, currentUserId];
+                        app.showToast('Suspicion raised');
                     }
                     
-                    // Calculate if submission should be approved or rejected
-                    const totalVoters = participants.filter(p => p.userId !== submission.userId).length;
-                    const requiredApprovals = Math.ceil(totalVoters / 2); // Majority needed
+                    // Calculate if submission should be rejected
+                    // All other players must raise suspicion for rejection
+                    const totalOtherPlayers = participants.filter(p => p.userId !== submission.userId).length;
                     
                     let newStatus = submission.status;
-                    let pointsEarned = 0;
                     
-                    if (newApprovals.length >= requiredApprovals) {
-                        newStatus = 'approved';
-                        pointsEarned = submission.task?.points || 0;
-                        
-                        // Update submitter's score
-                        const submitterParticipant = participants.find(p => p.userId === submission.userId);
-                        if (submitterParticipant) {
-                            const updateData = {
-                                [`participants/${submission.userId}/score`]: (submitterParticipant.score || 0) + pointsEarned
-                            };
-                            await app.updateRoom(roomData.id, updateData);
-                        }
-                    } else if (newRejections.length >= requiredApprovals) {
+                    if (newSuspicions.length >= totalOtherPlayers) {
                         newStatus = 'rejected';
+                        app.showToast('Submission rejected - all players raised suspicion');
                     }
                     
                     // Prepare Firebase update data
                     const updateData = {
-                        [`submissions/${actualSubmissionId}/approvals`]: newApprovals,
-                        [`submissions/${actualSubmissionId}/rejections`]: newRejections,
+                        [`submissions/${actualSubmissionId}/suspicions`]: newSuspicions,
                         [`submissions/${actualSubmissionId}/status`]: newStatus
                     };
                     
-                    // If approved, also update the participant's score
-                    if (newStatus === 'approved' && pointsEarned > 0) {
-                        const submitterParticipant = participants.find(p => p.userId === submission.userId);
-                        if (submitterParticipant) {
-                            updateData[`participants/${submission.userId}/score`] = (submitterParticipant.score || 0) + pointsEarned;
-                        }
-                    }
-                    
-                    console.log('🔄 Updating Firebase with approval data:', updateData);
+                    console.log('🔄 Updating Firebase with suspicion data:', updateData);
                     await app.updateRoom(roomData.id, updateData);
-                    console.log('✅ Approval vote submitted successfully');
+                    console.log('✅ Suspicion vote submitted successfully');
                     
                     // Force immediate UI refresh
                     setTimeout(async () => {
                         await loadFirebaseData();
+                        updateMissionTab(); // Update mission tab immediately
                     }, 500);
                     
                     // Show status message
@@ -1545,74 +1572,50 @@
                                 approvalSection = document.createElement('div');
                                 approvalSection.style.marginTop = '12px';
                                 approvalSection.setAttribute('data-approval-section', 'true');
+                                
+                                const suspicionCount = cardData.suspicions || 0;
+                                const totalOtherPlayers = cardData.totalVoters || 0;
+                                const currentUserSuspicious = cardData.submissionData.suspicions?.includes(currentUserId) || false;
+                                
                                 approvalSection.innerHTML = `
                                     <div class="muted" style="font-size: 12px; margin-bottom: 8px;">
-                                        Approvals needed: ${cardData.approvalCount || 0}/${cardData.totalVoters || 0}
+                                        Suspicions raised: ${suspicionCount}/${totalOtherPlayers}
                                     </div>
                                 `;
                                 
-                                const buttonContainer = document.createElement('div');
-                                buttonContainer.className = 'between flex';
-                                buttonContainer.style.gap = '8px';
-                                
-                                const approveBtn = document.createElement('button');
-                                approveBtn.className = 'btn btn-primary btn-small';
-                                approveBtn.textContent = `👍 Approve (${cardData.approvals || 0})`;
-                                approveBtn.addEventListener('click', async () => {
+                                const suspicionBtn = document.createElement('button');
+                                suspicionBtn.className = currentUserSuspicious ? 'btn btn-primary btn-small' : 'btn btn-outline btn-small';
+                                suspicionBtn.style.borderColor = '#ff3b30';
+                                suspicionBtn.style.color = currentUserSuspicious ? 'white' : '#ff3b30';
+                                if (currentUserSuspicious) suspicionBtn.style.background = '#ff3b30';
+                                suspicionBtn.textContent = `🚨 ${currentUserSuspicious ? 'Remove Suspicion' : 'Raise Suspicion'} (${suspicionCount})`;
+                                suspicionBtn.addEventListener('click', async () => {
                                     await handleApproval(cardData.submissionData, true, cardData.submissionId);
                                 });
                                 
-                                const rejectBtn = document.createElement('button');
-                                rejectBtn.className = 'btn btn-outline btn-small';
-                                rejectBtn.setAttribute('data-reject', 'true');
-                                rejectBtn.textContent = `👎 Reject (${cardData.rejections || 0})`;
-                                rejectBtn.addEventListener('click', async () => {
-                                    await handleApproval(cardData.submissionData, false, cardData.submissionId);
-                                });
-                                
-                                buttonContainer.appendChild(approveBtn);
-                                buttonContainer.appendChild(rejectBtn);
-                                approvalSection.appendChild(buttonContainer);
+                                approvalSection.appendChild(suspicionBtn);
                                 existingCard.appendChild(approvalSection);
                             }
                         } else {
-                            // Update existing approval buttons
-                            // Check if buttons actually exist
-                            if (approveBtn && rejectBtn) {
-                                approveBtn.textContent = `👍 Approve (${cardData.approvals || 0})`;
-                                rejectBtn.textContent = `👎 Reject (${cardData.rejections || 0})`;
-                            } else {
-                                // Buttons don't exist, need to create them
-                                const buttonContainer = document.createElement('div');
-                                buttonContainer.className = 'between flex';
-                                buttonContainer.style.gap = '8px';
-                                
-                                const newApproveBtn = document.createElement('button');
-                                newApproveBtn.className = 'btn btn-primary btn-small';
-                                newApproveBtn.textContent = `👍 Approve (${cardData.approvals || 0})`;
-                                newApproveBtn.addEventListener('click', async () => {
-                                    await handleApproval(cardData.submissionData, true, cardData.submissionId);
-                                });
-                                
-                                const newRejectBtn = document.createElement('button');
-                                newRejectBtn.className = 'btn btn-outline btn-small';
-                                newRejectBtn.setAttribute('data-reject', 'true');
-                                newRejectBtn.textContent = `👎 Reject (${cardData.rejections || 0})`;
-                                newRejectBtn.addEventListener('click', async () => {
-                                    await handleApproval(cardData.submissionData, false, cardData.submissionId);
-                                });
-                                
-                                buttonContainer.appendChild(newApproveBtn);
-                                buttonContainer.appendChild(newRejectBtn);
-                                approvalSection.appendChild(buttonContainer);
+                            // Update existing suspicion button
+                            const currentUserId = app.getCurrentUser()?.uid || user.userId;
+                            const suspicionBtn = approvalSection.querySelector('button');
+                            const suspicionCount = cardData.suspicions || 0;
+                            const totalOtherPlayers = cardData.totalVoters || 0;
+                            const currentUserSuspicious = cardData.submissionData.suspicions?.includes(currentUserId) || false;
+                            
+                            if (suspicionBtn) {
+                                suspicionBtn.className = currentUserSuspicious ? 'btn btn-primary btn-small' : 'btn btn-outline btn-small';
+                                suspicionBtn.style.borderColor = '#ff3b30';
+                                suspicionBtn.style.color = currentUserSuspicious ? 'white' : '#ff3b30';
+                                suspicionBtn.style.background = currentUserSuspicious ? '#ff3b30' : '';
+                                suspicionBtn.textContent = `🚨 ${currentUserSuspicious ? 'Remove Suspicion' : 'Raise Suspicion'} (${suspicionCount})`;
                             }
                             
-                            if (approvalSection) {
-                                // Update the approval count text
-                                const countDiv = approvalSection.querySelector('.muted');
-                                if (countDiv) {
-                                    countDiv.textContent = `Approvals needed: ${cardData.approvalCount || 0}/${cardData.totalVoters || 0}`;
-                                }
+                            // Update the suspicion count text
+                            const countDiv = approvalSection.querySelector('.muted');
+                            if (countDiv) {
+                                countDiv.textContent = `Suspicions raised: ${suspicionCount}/${totalOtherPlayers}`;
                             }
                         }
                         return;
@@ -1719,81 +1722,60 @@
                             imgContainer.appendChild(img);
                             card.appendChild(imgContainer);
                         }
-                        
-                        // Status indicator
-                        if (cardData.status === 'approved') {
-                            const statusLabel = document.createElement('div');
-                            statusLabel.className = 'badge';
-                            statusLabel.style.background = 'rgba(0,224,84,0.15)';
-                            statusLabel.style.color = '#00E054';
-                            statusLabel.textContent = '✅ Approved';
-                            card.appendChild(statusLabel);
-                        } else if (cardData.status === 'rejected') {
-                            const statusLabel = document.createElement('div');
-                            statusLabel.className = 'badge';
-                            statusLabel.style.background = 'rgba(255,59,48,0.15)';
-                            statusLabel.style.color = '#ff3b30';
-                            statusLabel.textContent = '❌ Rejected';
-                            card.appendChild(statusLabel);
-                        }
 
-                        // Approval buttons (only for pending submissions and not your own)
+                        // Suspicion button (only for approved submissions and not your own)
                         const currentUserId = app.getCurrentUser()?.uid || user.userId;
                         
-                        if (cardData.status === 'pending' && cardData.submissionData && cardData.submissionData.userId !== currentUserId) {
+                        if (cardData.status === 'approved' && cardData.submissionData && cardData.submissionData.userId !== currentUserId) {
 
                             const approvalSection = document.createElement('div');
                             approvalSection.style.marginTop = '12px';
                             approvalSection.setAttribute('data-approval-section', 'true');
+                            
+                            const suspicionCount = cardData.suspicions || 0;
+                            const totalOtherPlayers = cardData.totalVoters || 0;
+                            const currentUserSuspicious = cardData.submissionData.suspicions?.includes(currentUserId) || false;
+                            
                             approvalSection.innerHTML = `
                                 <div class="muted" style="font-size: 12px; margin-bottom: 8px;">
-                                    Approvals needed: ${cardData.approvalCount || 0}/${cardData.totalVoters || 0}
+                                    Suspicions raised: ${suspicionCount}/${totalOtherPlayers}
                                 </div>
                             `;
                             
-                            const buttonContainer = document.createElement('div');
-                            buttonContainer.className = 'between flex';
-                            buttonContainer.style.gap = '8px';
-                            
-                            const approveBtn = document.createElement('button');
-                            approveBtn.className = 'btn btn-primary btn-small';
-                            approveBtn.textContent = `👍 Approve (${cardData.approvals || 0})`;
-                            approveBtn.addEventListener('click', async () => {
+                            const suspicionBtn = document.createElement('button');
+                            suspicionBtn.className = currentUserSuspicious ? 'btn btn-primary btn-small' : 'btn btn-outline btn-small';
+                            suspicionBtn.style.borderColor = '#ff3b30';
+                            suspicionBtn.style.color = currentUserSuspicious ? 'white' : '#ff3b30';
+                            if (currentUserSuspicious) suspicionBtn.style.background = '#ff3b30';
+                            suspicionBtn.textContent = `🚨 ${currentUserSuspicious ? 'Remove Suspicion' : 'Raise Suspicion'} (${suspicionCount})`;
+                            suspicionBtn.addEventListener('click', async () => {
                                 await handleApproval(cardData.submissionData, true, cardData.submissionId);
                             });
                             
-                            const rejectBtn = document.createElement('button');
-                            rejectBtn.className = 'btn btn-outline btn-small';
-                            rejectBtn.setAttribute('data-reject', 'true');
-                            rejectBtn.textContent = `👎 Reject (${cardData.rejections || 0})`;
-                            rejectBtn.addEventListener('click', async () => {
-                                await handleApproval(cardData.submissionData, false, cardData.submissionId);
-                            });
-                            
-                            buttonContainer.appendChild(approveBtn);
-                            buttonContainer.appendChild(rejectBtn);
-                            approvalSection.appendChild(buttonContainer);
+                            approvalSection.appendChild(suspicionBtn);
                             card.appendChild(approvalSection);
                         } else if (cardData.submissionData && cardData.submissionData.userId === currentUserId) {
-                            // Show status for own submissions
-                            const statusInfo = document.createElement('div');
-                            statusInfo.className = 'muted';
-                            statusInfo.style.fontSize = '12px';
-                            statusInfo.style.marginTop = '8px';
-                            
-                            if (cardData.status === 'pending') {
-                                statusInfo.textContent = `Waiting for approval: ${cardData.approvals || 0}/${cardData.totalVoters || 0} votes`;
-                            } else if (cardData.status === 'approved') {
-                                if (mode === 'oneday') {
-                                    statusInfo.textContent = '✅ Great job! You completed this task.';
-                                } else {
-                                    statusInfo.textContent = `Approved! You earned ${cardData.submissionData.task?.points || 0} points.`;
+                            // Show status for own submissions - only if there's important info
+                            if (cardData.status === 'approved') {
+                                const suspicionCount = cardData.suspicions || 0;
+                                const totalOtherPlayers = cardData.totalVoters || 0;
+                                if (suspicionCount > 0) {
+                                    const statusInfo = document.createElement('div');
+                                    statusInfo.className = 'muted';
+                                    statusInfo.style.fontSize = '12px';
+                                    statusInfo.style.marginTop = '8px';
+                                    statusInfo.textContent = `⚠️ ${suspicionCount}/${totalOtherPlayers} players raised suspicion`;
+                                    statusInfo.style.color = '#ff3b30';
+                                    card.appendChild(statusInfo);
                                 }
                             } else if (cardData.status === 'rejected') {
+                                const statusInfo = document.createElement('div');
+                                statusInfo.className = 'muted';
+                                statusInfo.style.fontSize = '12px';
+                                statusInfo.style.marginTop = '8px';
                                 statusInfo.textContent = 'Rejected. You can try uploading again.';
+                                card.appendChild(statusInfo);
                             }
-                            
-                            card.appendChild(statusInfo);
                         }
 
                         // Append to DOM immediately (no fragment - cards render as they're created)
@@ -1856,20 +1838,10 @@
                     
                     return { ...p, points: calculatedPoints, submissionCount: userSubmissions.length };
                 } else {
-                    // For oneday mode, calculate percentage of tasks completed using the deadline date
-                    const getOneDayReferenceDate = () => {
-                        if (mode === 'oneday' && roomData.dday) {
-                            const ddayDate = new Date(roomData.dday);
-                            return ddayDate.toDateString();
-                        }
-                        return new Date().toDateString();
-                    };
-                    const oneDayReferenceDate = getOneDayReferenceDate();
-                    
+                    // For oneday mode, calculate percentage of tasks completed up to the deadline
                     const userSubmissions = Object.values(roomData.submissions || {}).filter(s => 
                         s.userId === p.userId && 
-                        s.status === 'approved' &&
-                        new Date(s.submittedAt).toDateString() === oneDayReferenceDate
+                        s.status === 'approved'
                     );
                     
                     // Calculate based on minutes, not task count
@@ -1897,8 +1869,7 @@
                         completedMinutes,
                         totalExpectedMinutes,
                         percentage: Math.round(percentage),
-                        approvedOnDeadlineDate: userSubmissions.length,
-                        referenceDate: oneDayReferenceDate
+                        approvedSubmissions: userSubmissions.length
                     });
                     
                     return { ...p, rate: percentage / 100, remaining: totalTasks - tasksCompleted, tasksCompleted };
@@ -1938,8 +1909,6 @@
                     if (latestUserSubmission) {
                         if (latestUserSubmission.status === 'approved') {
                             status = '✅ Complete';
-                        } else if (latestUserSubmission.status === 'pending') {
-                            status = '⏳ Pending';
                         } else if (latestUserSubmission.status === 'rejected') {
                             status = '❌ Rejected';
                         }
