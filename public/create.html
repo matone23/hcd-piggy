@@ -25,8 +25,33 @@
             <div class="input-group">
                 <label>Mode</label>
                 <div class="chips" id="mode-chips">
-                    <div class="chip active" data-mode="routine">Type A · Routine</div>
-                    <div class="chip" data-mode="oneday">Type B · 1-Day</div>
+                    <div class="chip active" data-mode="routine">📅 Routine</div>
+                    <div class="chip" data-mode="oneday">🎯 1-Day Challenge</div>
+                </div>
+                
+                <!-- Mode descriptions -->
+                <div id="routine-description" style="margin-top: 12px; padding: 12px; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm);">
+                    <div style="font-weight: 700; margin-bottom: 8px; color: var(--text);">📅 Routine Mode</div>
+                    <div style="font-size: 14px; color: var(--muted); margin-bottom: 8px;">
+                        Daily check-in competition over multiple days. Upload proof photo each day to earn points based on your intensity level (Min/More/Max).
+                    </div>
+                    <div style="font-size: 13px; color: var(--muted); opacity: 0.8;">
+                        <strong>Best for:</strong> Building daily habits like exercise, reading, meditation<br>
+                        <strong>Example:</strong> "30-day morning workout - Min: 2pts, More: 5pts, Max: 10pts per day"<br>
+                        <strong>How it works:</strong> Upload daily proof photo → Auto-approved → Earn points (2/5/10 based on intensity) → Other members can raise claims if suspicious → Highest total points when time ends wins
+                    </div>
+                </div>
+                
+                <div id="oneday-description" style="margin-top: 12px; padding: 12px; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); display: none;">
+                    <div style="font-weight: 700; margin-bottom: 8px; color: var(--text);">🎯 1-Day Challenge</div>
+                    <div style="font-size: 14px; color: var(--muted); margin-bottom: 8px;">
+                        Complete a to-do list in a single day. Create tasks with expected time, check them off as you go, and compete on completion rate.
+                    </div>
+                    <div style="font-size: 13px; color: var(--muted); opacity: 0.8;">
+                        <strong>Best for:</strong> Sprint tasks, weekend projects, to-do lists<br>
+                        <strong>Example:</strong> "Saturday deep clean - 5 tasks (180 min total)"<br>
+                        <strong>How it works:</strong> Add tasks with time estimates → Check off & upload proof as you complete →  Highest completion rate by end of day wins
+                    </div>
                 </div>
             </div>
 
@@ -123,12 +148,27 @@
                 chip.addEventListener('click', () => {
                     formState.mode = chip.dataset.mode;
                     setActive(modeChips, chip);
+                    
+                    // Toggle mode-specific options
                     if (formState.mode === 'routine') {
                         if (routineOptions) routineOptions.style.display = 'block';
                         if (onedayOptions) onedayOptions.style.display = 'none';
                     } else {
                         if (routineOptions) routineOptions.style.display = 'none';
                         if (onedayOptions) onedayOptions.style.display = 'block';
+                    }
+                    
+                    // Toggle mode descriptions
+                    const routineDesc = document.getElementById('routine-description');
+                    const onedayDesc = document.getElementById('oneday-description');
+                    if (routineDesc && onedayDesc) {
+                        if (formState.mode === 'routine') {
+                            routineDesc.style.display = 'block';
+                            onedayDesc.style.display = 'none';
+                        } else {
+                            routineDesc.style.display = 'none';
+                            onedayDesc.style.display = 'block';
+                        }
                     }
                 });
             });
